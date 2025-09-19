@@ -2,27 +2,11 @@ import { useEffect } from "react";
 import { Box, Stack, Tooltip } from "@mui/material";
 import CippFormComponent from "./CippFormComponent";
 import { useWatch } from "react-hook-form";
-import { ApiGetCall } from "../../api/ApiCall";
-import { useSettings } from "../../hooks/use-settings";
 
-const CippCalendarPermissionsDialog = ({ formHook }) => {
+const CippCalendarPermissionsDialog = ({ formHook, combinedOptions, isUserGroupLoading }) => {
   const permissionLevel = useWatch({
     control: formHook.control,
     name: "Permissions",
-  });
-
-  const userSettingsDefaults = useSettings();
-
-  const usersList = ApiGetCall({
-    url: "/api/ListGraphRequest",
-    data: {
-      Endpoint: `users`,
-      tenantFilter: userSettingsDefaults.currentTenant,
-      $select: "id,displayName,userPrincipalName,mail",
-      noPagination: true,
-      $top: 999,
-    },
-    queryKey: `UserNames-${userSettingsDefaults.currentTenant}`,
   });
 
   const isEditor = permissionLevel?.value === "Editor";
@@ -33,6 +17,15 @@ const CippCalendarPermissionsDialog = ({ formHook }) => {
     }
   }, [isEditor, formHook]);
 
+  // default SendNotificationToUser to false on mount
+  useEffect(() => {
+    formHook.setValue("SendNotificationToUser", false);
+  }, [formHook]);
+
+  // Only certain permission levels support sending a notification when calendar permissions are added
+  const notifyAllowed = ["AvailabilityOnly", "LimitedDetails", "Reviewer", "Editor"];
+  const isNotifyAllowed = notifyAllowed.includes(permissionLevel?.value ?? permissionLevel);
+
   return (
     <Stack spacing={3} sx={{ mt: 1 }}>
       <Box>
@@ -42,18 +35,14 @@ const CippCalendarPermissionsDialog = ({ formHook }) => {
           name="UserToGetPermissions"
           multiple={false}
           formControl={formHook}
-          isFetching={usersList.isFetching}
-          options={
-            usersList?.data?.Results?.map((user) => ({
-              value: user.userPrincipalName,
-              label: `${user.displayName} (${user.userPrincipalName})`,
-            })) || []
-          }
+          isFetching={isUserGroupLoading}
+          options={combinedOptions}
+          creatable={false}
           required={true}
           validators={{
-            validate: (value) => (value ? true : "Select a user to assign permissions to"),
+            validate: (value) => (value ? true : "Select a user or group to assign permissions to"),
           }}
-          placeholder="Select a user to assign permissions to"
+          placeholder="Select a user or group to assign permissions to"
         />
       </Box>
       <Box>
@@ -62,6 +51,7 @@ const CippCalendarPermissionsDialog = ({ formHook }) => {
           label="Permission Level"
           name="Permissions"
           required={true}
+          creatable={false}
           validators={{
             validate: (value) => (value ? true : "Select the permission level for the calendar"),
           }}
@@ -94,6 +84,30 @@ const CippCalendarPermissionsDialog = ({ formHook }) => {
               name="CanViewPrivateItems"
               formControl={formHook}
               disabled={!isEditor}
+              sx={{ ml: 1.5, mt: 0, mb: 0 }}
+            />
+          </span>
+        </Tooltip>
+      </Box>
+
+      <Box>
+        <Tooltip
+          title={
+            !isNotifyAllowed
+              ? `Send notification is only supported for: ${notifyAllowed.join(", ")}`
+              : ""
+          }
+          followCursor
+          placement="right"
+        >
+          <span>
+            <CippFormComponent
+              type="switch"
+              label="Send notification"
+              name="SendNotificationToUser"
+              formControl={formHook}
+              disabled={!isNotifyAllowed}
+              sx={{ ml: 1.5, mt: 0, mb: 0 }}
             />
           </span>
         </Tooltip>

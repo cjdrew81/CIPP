@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Stack, Box, CircularProgress, Link } from "@mui/material";
+import { Alert, Stack, Box, Link } from "@mui/material";
 import { CIPPM365OAuthButton } from "../CippComponents/CIPPM365OAuthButton";
 import { CippApiResults } from "../CippComponents/CippApiResults";
 import { ApiPostCall } from "../../api/ApiCall";
@@ -85,7 +85,7 @@ export const CippSAMDeploy = (props) => {
         <li>
           A CIPP Service Account. For more information on how to create a service account, click{" "}
           <Link
-            href="https://docs.cipp.app/setup/installation/samwizard"
+            href="https://docs.cipp.app/setup/installation/creating-the-cipp-service-account-gdap-ready"
             rel="noreferrer"
             target="_blank"
           >
