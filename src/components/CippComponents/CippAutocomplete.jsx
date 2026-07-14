@@ -124,7 +124,17 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
   useEffect(() => {
     const currentValue = value !== undefined && value !== null ? value : defaultValue
     if (currentValue !== undefined && currentValue !== null) {
-      setInternalValue(currentValue)
+      setInternalValue((prev) => {
+        // Compare by value to avoid infinite re-render loops when the parent
+        // passes an object with the same contents but a new reference.
+        if (prev && typeof prev === 'object' && typeof currentValue === 'object') {
+          if (prev.value === currentValue.value && prev.label === currentValue.label) {
+            return prev
+          }
+        }
+        if (prev === currentValue) return prev
+        return currentValue
+      })
     }
   }, [value, defaultValue])
 
@@ -136,7 +146,10 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
   const currentTenant = api?.tenantFilter ? api.tenantFilter : useSettings().currentTenant
   useEffect(() => {
     if (actionGetRequest.isSuccess && !actionGetRequest.isFetching) {
-      const lastPage = actionGetRequest.data?.pages[actionGetRequest.data.pages.length - 1]
+      // Guard against a non-paginated cache shape (e.g. when a queryKey is accidentally shared
+      // with a useQuery/ApiGetCall consumer that stores a plain array instead of { pages }).
+      const pages = actionGetRequest.data?.pages
+      const lastPage = Array.isArray(pages) ? pages[pages.length - 1] : undefined
       const nextLinkExists = lastPage?.Metadata?.nextLink
       if (nextLinkExists) {
         actionGetRequest.fetchNextPage()
@@ -144,23 +157,34 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
     }
   }, [actionGetRequest.data?.pages?.length, actionGetRequest.isFetching, api?.queryKey])
 
+  const apiRef = useRef(api)
+  apiRef.current = api
+
+  const apiUrl = api?.url
+  const apiQueryKey = api?.queryKey
   useEffect(() => {
-    if (api) {
+    const currentApi = apiRef.current
+    if (currentApi) {
+      const tenantScoped = !currentApi.excludeTenantFilter
       setGetRequestInfo({
-        url: api.url,
+        url: currentApi.url,
         data: {
-          ...(!api.excludeTenantFilter ? { tenantFilter: currentTenant } : null),
-          ...api.data,
+          ...(tenantScoped ? { tenantFilter: currentTenant } : null),
+          ...currentApi.data,
         },
         waiting: true,
-        queryKey: api.queryKey,
+        queryKey:
+          tenantScoped && currentApi.queryKey
+            ? `${currentApi.queryKey}-${currentTenant}`
+            : currentApi.queryKey,
       })
     }
-  }, [api, currentTenant])
+  }, [apiUrl, apiQueryKey, currentTenant])
 
   // After the data is fetched, combine and map it
   useEffect(() => {
     if (actionGetRequest.isSuccess) {
+      const currentApi = apiRef.current
       // E.g., allPages is an array of pages returned by the pagination
       const allPages = actionGetRequest.data?.pages || []
 
@@ -181,7 +205,7 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
 
       // Flatten the results from all pages
       const combinedResults = allPages.flatMap((page) => {
-        const nestedData = getNestedValue(page, api?.dataKey)
+        const nestedData = getNestedValue(page, currentApi?.dataKey)
         return nestedData !== undefined ? nestedData : []
       })
 
@@ -196,38 +220,38 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
         // Convert each item into your { label, value, addedFields, rawData } shape
         const convertedOptions = combinedResults.map((option) => {
           const addedFields = {}
-          if (api?.addedField) {
-            Object.keys(api.addedField).forEach((key) => {
-              addedFields[key] = option[api.addedField[key]]
+          if (currentApi?.addedField) {
+            Object.keys(currentApi.addedField).forEach((key) => {
+              addedFields[key] = option[currentApi.addedField[key]]
             })
           }
 
           return {
             label:
-              typeof api?.labelField === 'function'
-                ? api.labelField(option)
-                : option[api?.labelField]
-                  ? option[api?.labelField]
-                  : option[api?.altLabelField] ||
-                    option[api?.valueField] ||
+              typeof currentApi?.labelField === 'function'
+                ? currentApi.labelField(option)
+                : option[currentApi?.labelField]
+                  ? option[currentApi?.labelField]
+                  : option[currentApi?.altLabelField] ||
+                    option[currentApi?.valueField] ||
                     'No label found - Are you missing a labelField?',
             value:
-              typeof api?.valueField === 'function'
-                ? api.valueField(option)
-                : option[api?.valueField],
+              typeof currentApi?.valueField === 'function'
+                ? currentApi.valueField(option)
+                : option[currentApi?.valueField],
             description:
-              typeof api?.descriptionField === 'function'
-                ? api.descriptionField(option)
-                : api?.descriptionField
-                  ? option[api?.descriptionField]
+              typeof currentApi?.descriptionField === 'function'
+                ? currentApi.descriptionField(option)
+                : currentApi?.descriptionField
+                  ? option[currentApi?.descriptionField]
                   : undefined,
             addedFields,
             rawData: option, // Store the full original object
           }
         })
 
-        if (api?.dataFilter) {
-          setUsedOptions(api.dataFilter(convertedOptions))
+        if (currentApi?.dataFilter) {
+          setUsedOptions(currentApi.dataFilter(convertedOptions))
         } else {
           setUsedOptions(convertedOptions)
         }
@@ -237,17 +261,7 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
     if (actionGetRequest.isError) {
       setUsedOptions([{ label: getCippError(actionGetRequest.error), value: 'error' }])
     }
-  }, [
-    api,
-    actionGetRequest.data,
-    actionGetRequest.isSuccess,
-    actionGetRequest.isError,
-    preselectedValue,
-    defaultValue,
-    value,
-    multiple,
-    onChange,
-  ])
+  }, [actionGetRequest.data, actionGetRequest.isSuccess, actionGetRequest.isError, actionGetRequest.error, apiRef])
 
   const memoizedOptions = useMemo(() => {
     let finalOptions = api ? usedOptions : options
@@ -255,7 +269,7 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
       finalOptions = finalOptions.filter((o) => !removeOptions.includes(o.value))
     }
     if (sortOptions) {
-      finalOptions.sort((a, b) => a.label?.localeCompare(b.label))
+      finalOptions.sort((a, b) => String(a.label ?? "").localeCompare(String(b.label ?? "")))
     }
     return finalOptions
   }, [api, usedOptions, options, removeOptions, sortOptions])
@@ -411,7 +425,11 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
             })
             newValue = newValue.filter(
               (item) =>
-                item.value && item.value !== '' && item.value !== 'error' && item.value !== -1
+                item.value !== null &&
+                item.value !== undefined &&
+                item.value !== '' &&
+                item.value !== 'error' &&
+                item.value !== -1
             )
           } else {
             if (newValue?.manual || !newValue?.label) {
@@ -423,7 +441,7 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
                 newValue = onCreateOption(newValue, newValue?.addedFields)
               }
             }
-            if (!newValue?.value || newValue.value === 'error') {
+            if (newValue?.value === null || newValue?.value === undefined || newValue?.value === '' || newValue.value === 'error') {
               newValue = null
             }
           }
@@ -675,10 +693,10 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
             },
           },
         }}
-        renderOption={(props, option) => {
+        renderOption={(props, option, { index }) => {
           const { key, ...optionProps } = props
           return (
-            <Box component="li" key={key} {...optionProps}>
+            <Box component="li" key={`${option.value}-${index}`} {...optionProps}>
               <Box>
                 <Typography variant="body1">{option.label}</Typography>
                 {option.description && (

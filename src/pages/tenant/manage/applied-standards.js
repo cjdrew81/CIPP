@@ -36,8 +36,9 @@ import {
   Construction,
   Schedule,
   Check,
+  Warning,
 } from '@mui/icons-material'
-import standards from '../../../data/standards.json'
+import { getStandards } from '../../../utils/standards-data'
 import { CippApiDialog } from '../../../components/CippComponents/CippApiDialog'
 import { SvgIcon } from '@mui/material'
 import { useForm } from 'react-hook-form'
@@ -121,6 +122,17 @@ const Page = () => {
     enabled: !!templateId, // Only run the query if templateId is available
   })
 
+  // Fetch drift deviation data for drift templates
+  const isDriftTemplate = selectedTemplate?.type === 'drift'
+  const driftApi = ApiGetCall({
+    url: '/api/listTenantDrift',
+    data: {
+      tenantFilter: currentTenant,
+    },
+    queryKey: `TenantDrift-applied-${currentTenant}`,
+    enabled: isDriftTemplate && !!currentTenant,
+  })
+
   useEffect(() => {
     if (templateId && templateDetails.isSuccess && templateDetails.data) {
       const selectedTemplate = templateDetails.data.find((template) => template.GUID === templateId)
@@ -139,6 +151,7 @@ const Page = () => {
           return template?.displayName || template?.templateName || template?.name || guid
         }
 
+        const templateExists = (guid) => !!guid && templateDetails.data.some((t) => t.GUID === guid)
         const allStandards = []
         if (selectedTemplate.standards) {
           Object.entries(selectedTemplate.standards).forEach(([standardKey, standardConfig]) => {
@@ -151,11 +164,11 @@ const Page = () => {
                   templateItem['TemplateList-Tags']?.addedFields?.templates ||
                   templateItem['TemplateList-Tags']?.rawData?.templates
 
-                if (templateItem['TemplateList-Tags']?.value && tagTemplates) {
+                if (templateItem['TemplateList-Tags']?.value && tagTemplates?.length > 0) {
                   tagTemplates.forEach((expandedTemplate) => {
                     const itemTemplateId = expandedTemplate.GUID
                     const standardId = `standards.IntuneTemplate.${itemTemplateId}`
-                    const standardInfo = standards.find(
+                    const standardInfo = getStandards().find(
                       (s) => s.name === `standards.IntuneTemplate`
                     )
 
@@ -219,7 +232,7 @@ const Page = () => {
 
                     // Check if this standard is overridden by another template
                     const tenantTemplateId = standardObject?.TemplateId
-                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
                     const overridingTemplateName = isOverridden
                       ? getTemplateDisplayName(tenantTemplateId)
                       : null
@@ -237,6 +250,7 @@ const Page = () => {
                               TemplateId: tenantTemplateId,
                               CurrentValue: standardObject?.CurrentValue,
                               ExpectedValue: standardObject?.ExpectedValue,
+                              LicenseAvailable: standardObject?.LicenseAvailable,
                             }
                           : currentTenantStandard?.value,
                       standardValue: templateSettings,
@@ -280,7 +294,7 @@ const Page = () => {
                   const itemTemplateId = templateItem.TemplateList?.value
                   if (itemTemplateId) {
                     const standardId = `standards.IntuneTemplate.${itemTemplateId}`
-                    const standardInfo = standards.find(
+                    const standardInfo = getStandards().find(
                       (s) => s.name === `standards.IntuneTemplate`
                     )
 
@@ -343,7 +357,7 @@ const Page = () => {
 
                     // Check if this standard is overridden by another template
                     const tenantTemplateId = standardObject?.TemplateId
-                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
                     const overridingTemplateName = isOverridden
                       ? getTemplateDisplayName(tenantTemplateId)
                       : null
@@ -361,6 +375,7 @@ const Page = () => {
                               TemplateId: tenantTemplateId,
                               CurrentValue: standardObject?.CurrentValue,
                               ExpectedValue: standardObject?.ExpectedValue,
+                              LicenseAvailable: standardObject?.LicenseAvailable,
                             }
                           : currentTenantStandard?.value,
                       standardValue: templateSettings, // Use the template settings object instead of true
@@ -416,11 +431,11 @@ const Page = () => {
                   templateItem['TemplateList-Tags']?.rawData?.templates
 
                 // Check if this item has TemplateList-Tags and expand them
-                if (templateItem['TemplateList-Tags']?.value && tagTemplates) {
+                if (templateItem['TemplateList-Tags']?.value && tagTemplates?.length > 0) {
                   tagTemplates.forEach((expandedTemplate) => {
                     const itemTemplateId = expandedTemplate.GUID
                     const standardId = `standards.ConditionalAccessTemplate.${itemTemplateId}`
-                    const standardInfo = standards.find(
+                    const standardInfo = getStandards().find(
                       (s) => s.name === `standards.ConditionalAccessTemplate`
                     )
 
@@ -431,7 +446,7 @@ const Page = () => {
                     const standardObject = currentTenantObj?.[standardId]
                     const directStandardValue = standardObject?.Value
                     const tenantTemplateId = standardObject?.TemplateId
-                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
                     const overridingTemplateName = isOverridden
                       ? getTemplateDisplayName(tenantTemplateId)
                       : null
@@ -493,6 +508,7 @@ const Page = () => {
                               TemplateId: tenantTemplateId,
                               CurrentValue: standardObject?.CurrentValue,
                               ExpectedValue: standardObject?.ExpectedValue,
+                              LicenseAvailable: standardObject?.LicenseAvailable,
                             }
                           : currentTenantStandard?.value,
                       standardValue: templateSettings,
@@ -536,7 +552,7 @@ const Page = () => {
                   const itemTemplateId = templateItem.TemplateList?.value
                   if (itemTemplateId) {
                     const standardId = `standards.ConditionalAccessTemplate.${itemTemplateId}`
-                    const standardInfo = standards.find(
+                    const standardInfo = getStandards().find(
                       (s) => s.name === `standards.ConditionalAccessTemplate`
                     )
 
@@ -547,7 +563,7 @@ const Page = () => {
                     const standardObject = currentTenantObj?.[standardId]
                     const directStandardValue = standardObject?.Value
                     const tenantTemplateId = standardObject?.TemplateId
-                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+                    const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
                     const overridingTemplateName = isOverridden
                       ? getTemplateDisplayName(tenantTemplateId)
                       : null
@@ -608,6 +624,7 @@ const Page = () => {
                               TemplateId: tenantTemplateId,
                               CurrentValue: standardObject?.CurrentValue,
                               ExpectedValue: standardObject?.ExpectedValue,
+                              LicenseAvailable: standardObject?.LicenseAvailable,
                             }
                           : currentTenantStandard?.value,
                       standardValue: templateSettings, // Use the template settings object instead of true
@@ -658,7 +675,7 @@ const Page = () => {
                 if (!displayName) return
 
                 const standardId = `standards.QuarantineTemplate.${displayName}`
-                const standardInfo = standards.find(
+                const standardInfo = getStandards().find(
                   (s) => s.name === 'standards.QuarantineTemplate'
                 )
 
@@ -668,7 +685,7 @@ const Page = () => {
                 const standardObject = currentTenantObj?.[standardId]
                 const directStandardValue = standardObject?.Value
                 const tenantTemplateId = standardObject?.TemplateId
-                const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+                const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
                 const overridingTemplateName = isOverridden
                   ? getTemplateDisplayName(tenantTemplateId)
                   : null
@@ -716,6 +733,7 @@ const Page = () => {
                           TemplateId: tenantTemplateId,
                           CurrentValue: standardObject?.CurrentValue,
                           ExpectedValue: standardObject?.ExpectedValue,
+                          LicenseAvailable: standardObject?.LicenseAvailable,
                         }
                       : currentTenantStandard?.value,
                   standardValue: { displayName },
@@ -748,12 +766,126 @@ const Page = () => {
                   overridingTemplateName,
                 })
               })
+            } else if (standardKey === 'ReusableSettingsTemplate' && Array.isArray(standardConfig)) {
+              standardConfig.forEach((templateItem) => {
+                if (!templateItem) return
+
+                // TemplateList is multi-select for this standard, so each entry holds an array
+                const templateList = Array.isArray(templateItem.TemplateList)
+                  ? templateItem.TemplateList
+                  : [templateItem.TemplateList].filter(Boolean)
+
+                templateList.forEach((templateEntry) => {
+                  const itemTemplateId = templateEntry?.value
+                  if (!itemTemplateId) return
+
+                  const standardId = `standards.ReusableSettingsTemplate.${itemTemplateId}`
+                  const standardInfo = getStandards().find(
+                    (s) => s.name === 'standards.ReusableSettingsTemplate'
+                  )
+
+                  const currentTenantStandard = currentTenantData.find(
+                    (s) => s.standardId === standardId
+                  )
+                  const standardObject = currentTenantObj?.[standardId]
+                  const directStandardValue = standardObject?.Value
+                  const tenantTemplateId = standardObject?.TemplateId
+                  const isOverridden =
+                    tenantTemplateId &&
+                    tenantTemplateId !== templateId &&
+                    templateExists(tenantTemplateId)
+                  const overridingTemplateName = isOverridden
+                    ? getTemplateDisplayName(tenantTemplateId)
+                    : null
+
+                  let isCompliant = false
+                  // Empty-string Current/Expected means the standard only wrote a FieldValue
+                  // (legacy row shape) — comparing them would always match, so fall through.
+                  if (
+                    standardObject?.CurrentValue !== undefined &&
+                    standardObject?.ExpectedValue !== undefined &&
+                    standardObject?.CurrentValue !== '' &&
+                    standardObject?.ExpectedValue !== ''
+                  ) {
+                    const sortedCurrent =
+                      typeof standardObject.CurrentValue === 'object' &&
+                      standardObject.CurrentValue !== null
+                        ? Object.keys(standardObject.CurrentValue)
+                            .sort()
+                            .reduce((obj, key) => {
+                              obj[key] = standardObject.CurrentValue[key]
+                              return obj
+                            }, {})
+                        : standardObject.CurrentValue
+                    const sortedExpected =
+                      typeof standardObject.ExpectedValue === 'object' &&
+                      standardObject.ExpectedValue !== null
+                        ? Object.keys(standardObject.ExpectedValue)
+                            .sort()
+                            .reduce((obj, key) => {
+                              obj[key] = standardObject.ExpectedValue[key]
+                              return obj
+                            }, {})
+                        : standardObject.ExpectedValue
+                    isCompliant = JSON.stringify(sortedCurrent) === JSON.stringify(sortedExpected)
+                  } else if (directStandardValue === true) {
+                    isCompliant = true
+                  } else if (currentTenantStandard) {
+                    isCompliant = currentTenantStandard.value === true
+                  }
+
+                  allStandards.push({
+                    standardId,
+                    standardName: `Reusable Setting: ${templateEntry?.label || itemTemplateId}`,
+                    currentTenantValue:
+                      standardObject !== undefined
+                        ? {
+                            Value: directStandardValue,
+                            LastRefresh: standardObject?.LastRefresh,
+                            TemplateId: tenantTemplateId,
+                            CurrentValue: standardObject?.CurrentValue,
+                            ExpectedValue: standardObject?.ExpectedValue,
+                            LicenseAvailable: standardObject?.LicenseAvailable,
+                          }
+                        : currentTenantStandard?.value,
+                    standardValue: { displayName: templateEntry?.label || itemTemplateId },
+                    complianceStatus: isOverridden
+                      ? 'Overridden'
+                      : isCompliant
+                        ? 'Compliant'
+                        : 'Non-Compliant',
+                    complianceDetails:
+                      standardInfo?.docsDescription || standardInfo?.helpText || '',
+                    standardDescription: standardInfo?.helpText || '',
+                    standardImpact: standardInfo?.impact || 'Low Impact',
+                    standardImpactColour: standardInfo?.impactColour || 'info',
+                    templateName: selectedTemplate?.templateName || 'Standard Template',
+                    templateActions: (() => {
+                      const actions = templateItem.action || []
+                      const hasRemediate = actions.some((a) => {
+                        const label = typeof a === 'object' ? a?.label || a?.value : a
+                        return label === 'Remediate' || label === 'remediate'
+                      })
+                      const hasReport = actions.some((a) => {
+                        const label = typeof a === 'object' ? a?.label || a?.value : a
+                        return label === 'Report' || label === 'report'
+                      })
+                      if (hasRemediate && !hasReport) return [...actions, 'Report']
+                      return actions
+                    })(),
+                    autoRemediate: templateItem.autoRemediate || false,
+                    isOverridden,
+                    overridingTemplateId: isOverridden ? tenantTemplateId : null,
+                    overridingTemplateName,
+                  })
+                })
+              })
             } else if (standardKey === 'GroupTemplate') {
               // GroupTemplate structure has groupTemplate array and action array at the top level
               const groupTemplates = standardConfig.groupTemplate || []
               const actions = standardConfig.action || []
               const standardId = `standards.GroupTemplate`
-              const standardInfo = standards.find((s) => s.name === standardId)
+              const standardInfo = getStandards().find((s) => s.name === standardId)
 
               // Find the tenant's value for this template
               const currentTenantStandard = currentTenantData.find(
@@ -762,7 +894,7 @@ const Page = () => {
               const standardObject = currentTenantObj?.[standardId]
               const directStandardValue = standardObject?.Value
               const tenantTemplateId = standardObject?.TemplateId
-              const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+              const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
               const overridingTemplateName = isOverridden
                 ? getTemplateDisplayName(tenantTemplateId)
                 : null
@@ -856,6 +988,7 @@ const Page = () => {
                         TemplateId: tenantTemplateId,
                         CurrentValue: standardObject?.CurrentValue,
                         ExpectedValue: standardObject?.ExpectedValue,
+                        LicenseAvailable: standardObject?.LicenseAvailable,
                       }
                     : currentTenantStandard?.value,
                 standardValue: templateSettings,
@@ -891,7 +1024,7 @@ const Page = () => {
             } else {
               // Regular handling for other standards
               const standardId = `standards.${standardKey}`
-              const standardInfo = standards.find((s) => s.name === standardId)
+              const standardInfo = getStandards().find((s) => s.name === standardId)
               const standardSettings = standardConfig.standards?.[standardKey] || {}
               //console.log(standardInfo);
 
@@ -1024,6 +1157,11 @@ const Page = () => {
                 }
               }
 
+              // If the tenant is missing the required license, treat as compliant
+              if (standardObject?.LicenseAvailable === false) {
+                isCompliant = true
+              }
+
               // Determine compliance status text based on reporting flag
               const complianceStatus = reportingDisabled
                 ? 'Reporting Disabled'
@@ -1033,7 +1171,7 @@ const Page = () => {
 
               // Check if this standard is overridden by another template
               const tenantTemplateId = standardObject?.TemplateId
-              const isOverridden = tenantTemplateId && tenantTemplateId !== templateId
+              const isOverridden = tenantTemplateId && tenantTemplateId !== templateId && templateExists(tenantTemplateId)
               const overridingTemplateName = isOverridden
                 ? getTemplateDisplayName(tenantTemplateId)
                 : null
@@ -1050,6 +1188,7 @@ const Page = () => {
                         TemplateId: tenantTemplateId,
                         CurrentValue: standardObject?.CurrentValue,
                         ExpectedValue: standardObject?.ExpectedValue,
+                        LicenseAvailable: standardObject?.LicenseAvailable,
                       }
                     : currentTenantStandard?.value,
                 standardValue: standardSettings,
@@ -1097,7 +1236,7 @@ const Page = () => {
               if (standardObject?.TemplateId !== templateId) return
 
               const itemTemplateId = key.replace('standards.IntuneTemplate.', '')
-              const standardInfo = standards.find((s) => s.name === 'standards.IntuneTemplate')
+              const standardInfo = getStandards().find((s) => s.name === 'standards.IntuneTemplate')
               const directStandardValue = standardObject?.Value
 
               let isCompliant = false
@@ -1144,6 +1283,7 @@ const Page = () => {
                   TemplateId: standardObject?.TemplateId,
                   CurrentValue: standardObject?.CurrentValue,
                   ExpectedValue: standardObject?.ExpectedValue,
+                  LicenseAvailable: standardObject?.LicenseAvailable,
                 },
                 standardValue: {
                   templateId: itemTemplateId,
@@ -1165,6 +1305,50 @@ const Page = () => {
           })
         }
 
+        // For drift templates, cross-reference with drift deviation data
+        if (isDriftTemplate && driftApi.isSuccess && driftApi.data) {
+          const tenantDriftItems = Array.isArray(driftApi.data)
+            ? driftApi.data.filter((item) => item.tenantFilter === currentTenant)
+            : []
+
+          // Build a lookup of standardName -> deviation status
+          const deviationLookup = {}
+          tenantDriftItems.forEach((item) => {
+            if (item.acceptedDeviations) {
+              item.acceptedDeviations.forEach((dev) => {
+                if (dev?.standardName) {
+                  deviationLookup[dev.standardName] = 'Accepted'
+                  deviationLookup[`standards.${dev.standardName}`] = 'Accepted'
+                }
+              })
+            }
+            if (item.customerSpecificDeviations) {
+              item.customerSpecificDeviations.forEach((dev) => {
+                if (dev?.standardName) {
+                  deviationLookup[dev.standardName] = 'CustomerSpecific'
+                  deviationLookup[`standards.${dev.standardName}`] = 'CustomerSpecific'
+                }
+              })
+            }
+          })
+
+          // Update compliance status for accepted deviations
+          allStandards.forEach((standard) => {
+            if (standard.complianceStatus === 'Non-Compliant') {
+              const devStatus =
+                deviationLookup[standard.standardId] ||
+                deviationLookup[standard.standardId?.replace(/^standards\./, '')]
+              if (devStatus === 'Accepted') {
+                standard.complianceStatus = 'Accepted Deviation'
+                standard.deviationStatus = 'Accepted'
+              } else if (devStatus === 'CustomerSpecific') {
+                standard.complianceStatus = 'Customer Specific'
+                standard.deviationStatus = 'CustomerSpecific'
+              }
+            }
+          })
+        }
+
         setComparisonData(allStandards)
       } else {
         setComparisonData([])
@@ -1179,6 +1363,10 @@ const Page = () => {
     comparisonApi.isSuccess,
     comparisonApi.data,
     comparisonApi.isError,
+    isDriftTemplate,
+    driftApi.isSuccess,
+    driftApi.data,
+    currentTenant,
   ])
   const comparisonModeOptions = [{ label: 'Compare Tenant to Standard', value: 'standard' }]
 
@@ -1190,7 +1378,7 @@ const Page = () => {
 
     comparisonData.forEach((standard) => {
       // Find the standard info in the standards.json data
-      const standardInfo = standards.find((s) => standard.standardId.includes(s.name))
+      const standardInfo = getStandards().find((s) => standard.standardId.includes(s.name))
 
       // Use the category from standards.json, or default to "Other Standards"
       const category = standardInfo?.cat || 'Other Standards'
@@ -1213,6 +1401,14 @@ const Page = () => {
   const filteredGroupedStandards = useMemo(() => {
     if (!groupedStandards) return {}
 
+    const isLicenseMissingStandard = (standard) => {
+      const tenantValue = standard.currentTenantValue?.Value || standard.currentTenantValue
+      return (
+        standard.currentTenantValue?.LicenseAvailable === false ||
+        (typeof tenantValue === 'string' && tenantValue.startsWith('License Missing:'))
+      )
+    }
+
     if (!searchQuery && filter === 'all') {
       return groupedStandards
     }
@@ -1224,21 +1420,20 @@ const Page = () => {
       const categoryMatchesSearch = !searchQuery || category.toLowerCase().includes(searchLower)
 
       const filteredStandards = groupedStandards[category].filter((standard) => {
-        const tenantValue = standard.currentTenantValue?.Value || standard.currentTenantValue
-        const hasLicenseMissing =
-          typeof tenantValue === 'string' && tenantValue.startsWith('License Missing:')
+        const hasLicenseMissing = isLicenseMissingStandard(standard)
 
         const matchesFilter =
           filter === 'all' ||
           (filter === 'compliant' && standard.complianceStatus === 'Compliant') ||
           (filter === 'nonCompliant' && standard.complianceStatus === 'Non-Compliant') ||
           (filter === 'overridden' && standard.complianceStatus === 'Overridden') ||
+          (filter === 'acceptedDeviation' &&
+            (standard.complianceStatus === 'Accepted Deviation' ||
+              standard.complianceStatus === 'Customer Specific')) ||
           (filter === 'nonCompliantWithLicense' &&
             standard.complianceStatus === 'Non-Compliant' &&
             !hasLicenseMissing) ||
-          (filter === 'nonCompliantWithoutLicense' &&
-            standard.complianceStatus === 'Non-Compliant' &&
-            hasLicenseMissing)
+          (filter === 'nonCompliantWithoutLicense' && hasLicenseMissing)
 
         const matchesSearch =
           !searchQuery ||
@@ -1262,55 +1457,70 @@ const Page = () => {
     comparisonData?.filter((standard) => standard.complianceStatus === 'Compliant').length || 0
   const nonCompliantCount =
     comparisonData?.filter((standard) => standard.complianceStatus === 'Non-Compliant').length || 0
+  const acceptedDeviationCount =
+    comparisonData?.filter(
+      (standard) =>
+        standard.complianceStatus === 'Accepted Deviation' ||
+        standard.complianceStatus === 'Customer Specific'
+    ).length || 0
   const reportingDisabledCount =
     comparisonData?.filter((standard) => standard.complianceStatus === 'Reporting Disabled')
       .length || 0
   const overriddenCount =
     comparisonData?.filter((standard) => standard.complianceStatus === 'Overridden').length || 0
 
+  const isIncludedInScoring = (standard) =>
+    standard.complianceStatus !== 'Reporting Disabled' && standard.complianceStatus !== 'Overridden'
+
+  const isLicenseMissingStandard = (standard) => {
+    const tenantValue = standard.currentTenantValue?.Value || standard.currentTenantValue
+    return (
+      standard.currentTenantValue?.LicenseAvailable === false ||
+      (typeof tenantValue === 'string' && tenantValue.startsWith('License Missing:'))
+    )
+  }
+
   // Calculate license-related metrics
   const missingLicenseCount =
-    comparisonData?.filter((standard) => {
-      const tenantValue = standard.currentTenantValue?.Value || standard.currentTenantValue
-      return typeof tenantValue === 'string' && tenantValue.startsWith('License Missing:')
-    }).length || 0
+    comparisonData?.filter(
+      (standard) => isIncludedInScoring(standard) && isLicenseMissingStandard(standard)
+    ).length || 0
 
   const nonCompliantWithLicenseCount =
     comparisonData?.filter((standard) => {
-      const tenantValue = standard.currentTenantValue?.Value || standard.currentTenantValue
-      return (
-        standard.complianceStatus === 'Non-Compliant' &&
-        !(typeof tenantValue === 'string' && tenantValue.startsWith('License Missing:'))
-      )
+      return standard.complianceStatus === 'Non-Compliant' && !isLicenseMissingStandard(standard)
     }).length || 0
 
   const nonCompliantWithoutLicenseCount =
-    comparisonData?.filter((standard) => {
-      const tenantValue = standard.currentTenantValue?.Value || standard.currentTenantValue
-      return (
-        standard.complianceStatus === 'Non-Compliant' &&
-        typeof tenantValue === 'string' &&
-        tenantValue.startsWith('License Missing:')
-      )
-    }).length || 0
+    comparisonData?.filter((standard) => isLicenseMissingStandard(standard)).length || 0
+
+  const compliantWithAvailableLicenseCount =
+    comparisonData?.filter(
+      (standard) =>
+        isIncludedInScoring(standard) &&
+        (standard.complianceStatus === 'Compliant' ||
+          standard.complianceStatus === 'Accepted Deviation' ||
+          standard.complianceStatus === 'Customer Specific') &&
+        !isLicenseMissingStandard(standard)
+    ).length || 0
+
+  const scoredStandardsCount = Math.max(allCount - reportingDisabledCount - overriddenCount, 0)
 
   const compliancePercentage =
-    allCount > 0
-      ? Math.round(
-          (compliantCount / (allCount - reportingDisabledCount - overriddenCount || 1)) * 100
-        )
+    scoredStandardsCount > 0
+      ? Math.round((compliantWithAvailableLicenseCount / scoredStandardsCount) * 100)
       : 0
 
   const missingLicensePercentage =
-    allCount > 0
+    scoredStandardsCount > 0 ? Math.round((missingLicenseCount / scoredStandardsCount) * 100) : 0
+
+  // Combined score: standards either compliant with available licensing or blocked by missing license.
+  const combinedScore =
+    scoredStandardsCount > 0
       ? Math.round(
-          (missingLicenseCount / (allCount - reportingDisabledCount - overriddenCount || 1)) * 100
+          ((compliantWithAvailableLicenseCount + missingLicenseCount) / scoredStandardsCount) * 100
         )
       : 0
-
-  // Combined score: compliance percentage + missing license percentage
-  // This represents the total "addressable" compliance (compliant + could be compliant if licensed)
-  const combinedScore = compliancePercentage + missingLicensePercentage
 
   // Simple filter for all templates (no type filtering)
   const templateOptions = templates
@@ -1360,6 +1570,12 @@ const Page = () => {
         templateDetails.refetch()
       },
       currentTenant,
+      templateTenants: Array.isArray(selectedTemplate?.tenantFilter)
+        ? selectedTemplate.tenantFilter
+        : [],
+      excludedTenants: Array.isArray(selectedTemplate?.excludedTenants)
+        ? selectedTemplate.excludedTenants
+        : [],
     }),
   ]
 
@@ -1371,7 +1587,7 @@ const Page = () => {
       backUrl="/tenant/standards"
       actions={actions}
       actionsData={{}}
-      isFetching={comparisonApi.isFetching || templateDetails.isFetching}
+      isFetching={comparisonApi.isFetching || templateDetails.isFetching || driftApi.isFetching}
     >
       <CippHead title={title} />
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -1606,6 +1822,25 @@ const Page = () => {
                     combinedScore >= 80 ? 'success' : combinedScore >= 60 ? 'warning' : 'error'
                   }
                 />
+                <Chip
+                  icon={
+                    <SvgIcon fontSize="small">
+                      {isDriftTemplate ? <Policy /> : <FactCheck />}
+                    </SvgIcon>
+                  }
+                  label={isDriftTemplate ? 'Drift Standard' : 'Classic Standard'}
+                  size="small"
+                  color={isDriftTemplate ? 'info' : 'default'}
+                  variant="outlined"
+                />
+                {isDriftTemplate && (
+                <Chip
+                  label={'Alignment Score May Be Inaccurate For Drift Templates'}
+                  size="small"
+                  color={'warning'}
+                  variant="outlined"
+                />
+                )}
               </Stack>
             )}
             <Menu
@@ -1649,6 +1884,17 @@ const Page = () => {
               >
                 Overridden ({overriddenCount})
               </MenuItem>
+              {isDriftTemplate && acceptedDeviationCount > 0 && (
+                <MenuItem
+                  selected={filter === 'acceptedDeviation'}
+                  onClick={() => {
+                    setFilter('acceptedDeviation')
+                    setFilterMenuAnchor(null)
+                  }}
+                >
+                  Accepted Deviations ({acceptedDeviationCount})
+                </MenuItem>
+              )}
               <MenuItem
                 selected={filter === 'nonCompliantWithLicense'}
                 onClick={() => {
@@ -1780,7 +2026,10 @@ const Page = () => {
                                           ? 'warning.main'
                                           : standard.complianceStatus === 'Reporting Disabled'
                                             ? 'grey.500'
-                                            : 'error.main',
+                                            : standard.complianceStatus === 'Accepted Deviation' ||
+                                                standard.complianceStatus === 'Customer Specific'
+                                              ? 'info.main'
+                                              : 'error.main',
                                   }}
                                 >
                                   {standard.complianceStatus === 'Compliant' ? (
@@ -1789,6 +2038,9 @@ const Page = () => {
                                     <Info sx={{ color: 'white' }} />
                                   ) : standard.complianceStatus === 'Reporting Disabled' ? (
                                     <Info sx={{ color: 'white' }} />
+                                  ) : standard.complianceStatus === 'Accepted Deviation' ||
+                                    standard.complianceStatus === 'Customer Specific' ? (
+                                    <Check sx={{ color: 'white' }} />
                                   ) : (
                                     <Cancel sx={{ color: 'white' }} />
                                   )}
@@ -1865,110 +2117,123 @@ const Page = () => {
                           </Stack>
                           <Divider />
                           <Box sx={{ p: 3 }}>
-                            {/* Show Expected Configuration with property-by-property breakdown */}
-                            {standard.currentTenantValue?.ExpectedValue !== undefined ? (
-                              <Box>
-                                <Typography
-                                  variant="caption"
-                                  sx={{
-                                    fontWeight: 600,
-                                    color: 'text.secondary',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: 0.5,
-                                    display: 'block',
-                                    mb: 2,
-                                  }}
-                                >
-                                  Expected Configuration
-                                </Typography>
-                                {typeof standard.currentTenantValue.ExpectedValue === 'object' &&
-                                standard.currentTenantValue.ExpectedValue !== null ? (
-                                  <Stack spacing={2}>
-                                    {Object.entries(standard.currentTenantValue.ExpectedValue).map(
-                                      ([key, val]) => (
-                                        <Box key={key}>
-                                          <Typography
-                                            variant="subtitle2"
-                                            sx={{
-                                              fontWeight: 600,
-                                              mb: 1,
-                                              color: 'primary.main',
-                                            }}
-                                          >
-                                            {key}
-                                          </Typography>
-                                          <Box
-                                            sx={{
-                                              p: 1.5,
-                                              bgcolor: 'primary.lighter',
-                                              borderRadius: 1,
-                                              border: '1px solid',
-                                              borderColor: 'primary.main',
-                                            }}
-                                          >
-                                            <Typography
-                                              variant="body2"
-                                              sx={{
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.8125rem',
-                                                whiteSpace: 'pre-wrap',
-                                                wordBreak: 'break-word',
-                                              }}
-                                            >
-                                              {val !== undefined
-                                                ? JSON.stringify(val, null, 2)
-                                                : 'Not set'}
-                                            </Typography>
-                                          </Box>
-                                        </Box>
-                                      )
-                                    )}
-                                  </Stack>
-                                ) : (
-                                  <Box
-                                    sx={{
-                                      p: 1.5,
-                                      bgcolor: 'primary.lighter',
-                                      borderRadius: 1,
-                                      border: '1px solid',
-                                      borderColor: 'primary.main',
-                                    }}
-                                  >
+                            {standard.currentTenantValue?.LicenseAvailable === false ? (
+                              <Alert severity="warning" icon={<Warning />}>
+                                {typeof standard.currentTenantValue?.Value === 'string' &&
+                                standard.currentTenantValue.Value.startsWith('License Missing:')
+                                  ? standard.currentTenantValue.Value
+                                  : 'This tenant does not have the required licenses for this standard'}
+                              </Alert>
+                            ) : (
+                              <>
+                                {/* Show Expected Configuration with property-by-property breakdown */}
+                                {standard.currentTenantValue?.ExpectedValue !== undefined ? (
+                                  <Box>
                                     <Typography
-                                      variant="body2"
+                                      variant="caption"
                                       sx={{
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.8125rem',
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word',
+                                        fontWeight: 600,
+                                        color: 'text.secondary',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: 0.5,
+                                        display: 'block',
+                                        mb: 2,
                                       }}
                                     >
-                                      {String(standard.currentTenantValue.ExpectedValue)}
+                                      Expected Configuration
                                     </Typography>
+                                    {typeof standard.currentTenantValue.ExpectedValue ===
+                                      'object' &&
+                                    standard.currentTenantValue.ExpectedValue !== null ? (
+                                      <Stack spacing={2}>
+                                        {Object.entries(
+                                          standard.currentTenantValue.ExpectedValue
+                                        ).map(([key, val]) => (
+                                          <Box key={key}>
+                                            <Typography
+                                              variant="subtitle2"
+                                              sx={{
+                                                fontWeight: 600,
+                                                mb: 1,
+                                                color: 'primary.main',
+                                              }}
+                                            >
+                                              {key}
+                                            </Typography>
+                                            <Box
+                                              sx={{
+                                                p: 1.5,
+                                                bgcolor: 'primary.lighter',
+                                                borderRadius: 1,
+                                                border: '1px solid',
+                                                borderColor: 'primary.main',
+                                              }}
+                                            >
+                                              <Typography
+                                                variant="body2"
+                                                sx={{
+                                                  fontFamily: 'monospace',
+                                                  fontSize: '0.8125rem',
+                                                  whiteSpace: 'pre-wrap',
+                                                  wordBreak: 'break-word',
+                                                }}
+                                              >
+                                                {val !== undefined
+                                                  ? JSON.stringify(val, null, 2)
+                                                  : 'Not set'}
+                                              </Typography>
+                                            </Box>
+                                          </Box>
+                                        ))}
+                                      </Stack>
+                                    ) : (
+                                      <Box
+                                        sx={{
+                                          p: 1.5,
+                                          bgcolor: 'primary.lighter',
+                                          borderRadius: 1,
+                                          border: '1px solid',
+                                          borderColor: 'primary.main',
+                                        }}
+                                      >
+                                        <Typography
+                                          variant="body2"
+                                          sx={{
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.8125rem',
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word',
+                                          }}
+                                        >
+                                          {String(standard.currentTenantValue.ExpectedValue)}
+                                        </Typography>
+                                      </Box>
+                                    )}
                                   </Box>
+                                ) : (
+                                  <Alert severity="info">
+                                    This data has not yet been collected. Collect the data by
+                                    selecting Refresh Data from the Actions dropdown on the top of
+                                    the page.
+                                  </Alert>
                                 )}
-                              </Box>
-                            ) : (
-                              <Alert severity="info">
-                                This data has not yet been collected. Collect the data by selecting
-                                Refresh Data from the Actions dropdown on the top of the page.
-                              </Alert>
-                            )}
 
-                            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
-                              <Chip
-                                label={standard.standardImpact || 'Medium Impact'}
-                                size="small"
-                                color={
-                                  standard.standardImpactColour === 'info'
-                                    ? 'info'
-                                    : standard.standardImpactColour === 'warning'
-                                      ? 'warning'
-                                      : 'error'
-                                }
-                                sx={{ mr: 1 }}
-                              />
-                            </Box>
+                                <Box sx={{ mt: 2, display: 'flex', alignItems: 'center' }}>
+                                  <Chip
+                                    label={standard.standardImpact || 'Medium Impact'}
+                                    size="small"
+                                    color={
+                                      standard.standardImpactColour === 'info'
+                                        ? 'info'
+                                        : standard.standardImpactColour === 'warning'
+                                          ? 'warning'
+                                          : 'error'
+                                    }
+                                    sx={{ mr: 1 }}
+                                  />
+                                </Box>
+                              </>
+                            )}
                           </Box>
                         </Card>
                       </Grid>
@@ -2032,7 +2297,11 @@ const Page = () => {
                                             ? 'warning.main'
                                             : standard.complianceStatus === 'Reporting Disabled'
                                               ? 'grey.500'
-                                              : 'error.main',
+                                              : standard.complianceStatus ===
+                                                    'Accepted Deviation' ||
+                                                  standard.complianceStatus === 'Customer Specific'
+                                                ? 'info.main'
+                                                : 'error.main',
                                       borderRadius: '50%',
                                       width: 8,
                                       height: 8,
@@ -2062,34 +2331,504 @@ const Page = () => {
                           </Stack>
                           <Divider />
                           <Box sx={{ p: 3 }}>
-                            {/* Existing tenant comparison content */}
-                            {typeof standard.currentTenantValue?.Value === 'object' &&
-                            standard.currentTenantValue?.Value !== null ? (
-                              <Box
-                                sx={{
-                                  p: 2,
-                                  bgcolor: 'background.default',
-                                  borderRadius: 1,
-                                  border: '1px solid',
-                                  borderColor: 'divider',
-                                }}
-                              >
-                                {standard.complianceStatus === 'Reporting Disabled' ? (
-                                  <Alert severity="info" sx={{ mt: 1 }}>
-                                    Reporting is disabled for this standard in the template
-                                    configuration.
-                                  </Alert>
+                            {standard.currentTenantValue?.LicenseAvailable === false ? (
+                              <Alert severity="warning" icon={<Warning />}>
+                                {typeof standard.currentTenantValue?.Value === 'string' &&
+                                standard.currentTenantValue.Value.startsWith('License Missing:')
+                                  ? standard.currentTenantValue.Value
+                                  : 'This tenant does not have the required licenses for this standard'}
+                              </Alert>
+                            ) : (
+                              <>
+                                {/* Existing tenant comparison content */}
+                                {typeof standard.currentTenantValue?.Value === 'object' &&
+                                standard.currentTenantValue?.Value !== null ? (
+                                  <Box
+                                    sx={{
+                                      p: 2,
+                                      bgcolor: 'background.default',
+                                      borderRadius: 1,
+                                      border: '1px solid',
+                                      borderColor: 'divider',
+                                    }}
+                                  >
+                                    {standard.complianceStatus === 'Reporting Disabled' ? (
+                                      <Alert severity="info" sx={{ mt: 1 }}>
+                                        Reporting is disabled for this standard in the template
+                                        configuration.
+                                      </Alert>
+                                    ) : (
+                                      <>
+                                        {standard.complianceStatus === 'Overridden' ? (
+                                          <Alert severity="warning" sx={{ mb: 2 }}>
+                                            This setting is configured by template:{' '}
+                                            {standard.overridingTemplateName ||
+                                              standard.overridingTemplateId}
+                                          </Alert>
+                                        ) : standard.complianceStatus === 'Compliant' ? (
+                                          <>
+                                            {/* Show Current value property-by-property for compliant standards */}
+                                            {standard.currentTenantValue?.CurrentValue !==
+                                            undefined ? (
+                                              typeof standard.currentTenantValue.CurrentValue ===
+                                                'object' &&
+                                              standard.currentTenantValue.CurrentValue !== null ? (
+                                                <Stack spacing={2}>
+                                                  <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                      fontWeight: 600,
+                                                      color: 'text.secondary',
+                                                      textTransform: 'uppercase',
+                                                      letterSpacing: 0.5,
+                                                    }}
+                                                  >
+                                                    Current Configuration
+                                                  </Typography>
+                                                  {Object.entries(
+                                                    standard.currentTenantValue.CurrentValue
+                                                  ).map(([key, val]) => (
+                                                    <Box key={key}>
+                                                      <Typography
+                                                        variant="subtitle2"
+                                                        sx={{
+                                                          fontWeight: 600,
+                                                          mb: 1,
+                                                          color: 'success.main',
+                                                        }}
+                                                      >
+                                                        {key}
+                                                      </Typography>
+                                                      <Box
+                                                        sx={{
+                                                          p: 1.5,
+                                                          bgcolor: 'success.lighter',
+                                                          borderRadius: '12px',
+                                                          border: '2px solid',
+                                                          borderColor: 'success.main',
+                                                          position: 'relative',
+                                                        }}
+                                                      >
+                                                        <Box
+                                                          sx={{
+                                                            position: 'absolute',
+                                                            top: -8,
+                                                            right: -8,
+                                                            width: 24,
+                                                            height: 24,
+                                                            borderRadius: '50%',
+                                                            bgcolor: 'success.main',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                          }}
+                                                        >
+                                                          <Check
+                                                            sx={{ color: 'white', fontSize: 16 }}
+                                                          />
+                                                        </Box>
+                                                        <Typography
+                                                          variant="body2"
+                                                          sx={{
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '0.8125rem',
+                                                            whiteSpace: 'pre-wrap',
+                                                            wordBreak: 'break-word',
+                                                            color: 'success.dark',
+                                                          }}
+                                                        >
+                                                          {val !== undefined
+                                                            ? JSON.stringify(val, null, 2)
+                                                            : 'Not set'}
+                                                        </Typography>
+                                                      </Box>
+                                                    </Box>
+                                                  ))}
+                                                </Stack>
+                                              ) : (
+                                                <Box sx={{ mt: 2 }}>
+                                                  <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                      fontWeight: 600,
+                                                      color: 'text.secondary',
+                                                      textTransform: 'uppercase',
+                                                      letterSpacing: 0.5,
+                                                      display: 'block',
+                                                      mb: 1,
+                                                    }}
+                                                  >
+                                                    Current Configuration
+                                                  </Typography>
+                                                  <Box
+                                                    sx={{
+                                                      p: 1.5,
+                                                      bgcolor: 'success.lighter',
+                                                      borderRadius: '12px',
+                                                      border: '2px solid',
+                                                      borderColor: 'success.main',
+                                                    }}
+                                                  >
+                                                    <Typography
+                                                      variant="body2"
+                                                      sx={{
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.8125rem',
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-word',
+                                                        color: 'success.dark',
+                                                      }}
+                                                    >
+                                                      {String(
+                                                        standard.currentTenantValue.CurrentValue
+                                                      )}
+                                                    </Typography>
+                                                  </Box>
+                                                </Box>
+                                              )
+                                            ) : null}
+                                          </>
+                                        ) : (
+                                          <>
+                                            {standard.currentTenantValue?.Value === false && (
+                                              <Alert severity="warning" sx={{ mb: 2 }}>
+                                                This setting is not configured correctly
+                                              </Alert>
+                                            )}
+                                            {/* Show Current value property-by-property for non-compliant standards */}
+                                            {standard.currentTenantValue?.CurrentValue !==
+                                              undefined &&
+                                              (typeof standard.currentTenantValue.CurrentValue ===
+                                                'object' &&
+                                              standard.currentTenantValue.CurrentValue !== null ? (
+                                                <Stack
+                                                  spacing={2}
+                                                  sx={{
+                                                    mt:
+                                                      standard.currentTenantValue?.Value === false
+                                                        ? 0
+                                                        : 2,
+                                                  }}
+                                                >
+                                                  <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                      fontWeight: 600,
+                                                      color: 'text.secondary',
+                                                      textTransform: 'uppercase',
+                                                      letterSpacing: 0.5,
+                                                    }}
+                                                  >
+                                                    Current Configuration
+                                                  </Typography>
+                                                  {Object.entries(
+                                                    standard.currentTenantValue.CurrentValue
+                                                  ).map(([key, val]) => {
+                                                    // Compare with expected value for this property
+                                                    const expectedVal =
+                                                      standard.currentTenantValue?.ExpectedValue?.[
+                                                        key
+                                                      ]
+                                                    const isMatch = (() => {
+                                                      if (expectedVal === undefined) return false
+                                                      // Deep comparison handling nested objects and case-insensitive strings
+                                                      const compareDeep = (v1, v2) => {
+                                                        if (
+                                                          typeof v1 === 'string' &&
+                                                          typeof v2 === 'string'
+                                                        ) {
+                                                          return (
+                                                            v1.toLowerCase() === v2.toLowerCase()
+                                                          )
+                                                        }
+                                                        if (
+                                                          typeof v1 === 'object' &&
+                                                          v1 !== null &&
+                                                          typeof v2 === 'object' &&
+                                                          v2 !== null
+                                                        ) {
+                                                          return (
+                                                            JSON.stringify(v1) ===
+                                                            JSON.stringify(v2)
+                                                          )
+                                                        }
+                                                        return (
+                                                          JSON.stringify(v1) === JSON.stringify(v2)
+                                                        )
+                                                      }
+                                                      return compareDeep(val, expectedVal)
+                                                    })()
+
+                                                    return (
+                                                      <Box key={key}>
+                                                        <Typography
+                                                          variant="subtitle2"
+                                                          sx={{
+                                                            fontWeight: 600,
+                                                            mb: 1,
+                                                            color: isMatch
+                                                              ? 'success.main'
+                                                              : 'warning.main',
+                                                          }}
+                                                        >
+                                                          {key}
+                                                        </Typography>
+                                                        <Box
+                                                          sx={{
+                                                            p: 1.5,
+                                                            bgcolor: isMatch
+                                                              ? 'success.lighter'
+                                                              : 'action.hover',
+                                                            borderRadius: isMatch ? '12px' : 1,
+                                                            border: isMatch
+                                                              ? '2px solid'
+                                                              : '1px solid',
+                                                            borderColor: isMatch
+                                                              ? 'success.main'
+                                                              : 'divider',
+                                                            position: 'relative',
+                                                          }}
+                                                        >
+                                                          {isMatch && (
+                                                            <Box
+                                                              sx={{
+                                                                position: 'absolute',
+                                                                top: -8,
+                                                                right: -8,
+                                                                width: 24,
+                                                                height: 24,
+                                                                borderRadius: '50%',
+                                                                bgcolor: 'success.main',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                              }}
+                                                            >
+                                                              <Check
+                                                                sx={{
+                                                                  color: 'white',
+                                                                  fontSize: 16,
+                                                                }}
+                                                              />
+                                                            </Box>
+                                                          )}
+                                                          <Typography
+                                                            variant="body2"
+                                                            sx={{
+                                                              fontFamily: 'monospace',
+                                                              fontSize: '0.8125rem',
+                                                              whiteSpace: 'pre-wrap',
+                                                              wordBreak: 'break-word',
+                                                              color: isMatch
+                                                                ? 'success.dark'
+                                                                : 'inherit',
+                                                            }}
+                                                          >
+                                                            {val !== undefined
+                                                              ? JSON.stringify(val, null, 2)
+                                                              : 'Not set'}
+                                                          </Typography>
+                                                        </Box>
+                                                      </Box>
+                                                    )
+                                                  })}
+                                                </Stack>
+                                              ) : (
+                                                <Box
+                                                  sx={{
+                                                    mt:
+                                                      standard.currentTenantValue?.Value === false
+                                                        ? 0
+                                                        : 2,
+                                                    mb: 2,
+                                                  }}
+                                                >
+                                                  <Typography
+                                                    variant="caption"
+                                                    sx={{
+                                                      fontWeight: 600,
+                                                      color: 'text.secondary',
+                                                      textTransform: 'uppercase',
+                                                      letterSpacing: 0.5,
+                                                      display: 'block',
+                                                      mb: 2,
+                                                    }}
+                                                  >
+                                                    Current Configuration
+                                                  </Typography>
+                                                  <Box
+                                                    sx={{
+                                                      p: 1.5,
+                                                      bgcolor: 'action.hover',
+                                                      borderRadius: 1,
+                                                      border: '1px solid',
+                                                      borderColor: 'divider',
+                                                    }}
+                                                  >
+                                                    <Typography
+                                                      variant="body2"
+                                                      sx={{
+                                                        fontFamily: 'monospace',
+                                                        fontSize: '0.8125rem',
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-word',
+                                                      }}
+                                                    >
+                                                      {String(
+                                                        standard.currentTenantValue.CurrentValue
+                                                      )}
+                                                    </Typography>
+                                                  </Box>
+                                                </Box>
+                                              ))}
+                                          </>
+                                        )}
+
+                                        {/* Only show values if they're not simple true/false that's already covered by the alerts above */}
+                                        {!(
+                                          standard.complianceStatus === 'Compliant' &&
+                                          (standard.currentTenantValue?.Value === true ||
+                                            standard.currentTenantValue?.Value === false)
+                                        ) &&
+                                          Object.entries(standard.currentTenantValue)
+                                            .filter(
+                                              ([key]) =>
+                                                key !== 'LastRefresh' &&
+                                                key !== 'CurrentValue' &&
+                                                key !== 'ExpectedValue' &&
+                                                // Skip showing the Value field separately if it's just true/false
+                                                !(
+                                                  key === 'Value' &&
+                                                  (standard.currentTenantValue?.Value === true ||
+                                                    standard.currentTenantValue?.Value === false)
+                                                )
+                                            )
+                                            .map(([key, value]) => {
+                                              const actualValue = key === 'Value' ? value : value
+
+                                              const standardValueForKey =
+                                                standard.standardValue &&
+                                                typeof standard.standardValue === 'object'
+                                                  ? standard.standardValue[key]
+                                                  : undefined
+
+                                              const isDifferent =
+                                                standardValueForKey !== undefined &&
+                                                JSON.stringify(actualValue) !==
+                                                  JSON.stringify(standardValueForKey)
+
+                                              // Format the display value
+                                              let displayValue
+                                              if (typeof value === 'object' && value !== null) {
+                                                displayValue =
+                                                  value?.label || JSON.stringify(value, null, 2)
+                                              } else if (value === true) {
+                                                displayValue = 'Enabled'
+                                              } else if (value === false) {
+                                                displayValue = 'Disabled'
+                                              } else {
+                                                displayValue = String(value)
+                                              }
+
+                                              return (
+                                                <Box
+                                                  key={key}
+                                                  sx={{
+                                                    display: 'flex',
+                                                    mb: 0.5,
+                                                    flexWrap: 'wrap',
+                                                  }}
+                                                >
+                                                  <Typography
+                                                    variant="body2"
+                                                    sx={{
+                                                      fontWeight: 'medium',
+                                                      mr: 1,
+                                                      flexShrink: 0,
+                                                    }}
+                                                  >
+                                                    {key}:
+                                                  </Typography>
+                                                  <Typography
+                                                    variant="body2"
+                                                    component="pre"
+                                                    sx={{
+                                                      color:
+                                                        standard.complianceStatus === 'Compliant'
+                                                          ? 'success.main'
+                                                          : isDifferent
+                                                            ? 'error.main'
+                                                            : 'inherit',
+                                                      fontWeight:
+                                                        standard.complianceStatus ===
+                                                          'Non-Compliant' && isDifferent
+                                                          ? 'medium'
+                                                          : 'inherit',
+                                                      wordBreak: 'break-word',
+                                                      overflowWrap: 'break-word',
+                                                      whiteSpace: 'pre-wrap',
+                                                      flex: 1,
+                                                      minWidth: 0,
+                                                      fontFamily:
+                                                        typeof value === 'object' &&
+                                                        value !== null &&
+                                                        !value?.label
+                                                          ? 'monospace'
+                                                          : 'inherit',
+                                                      fontSize:
+                                                        typeof value === 'object' &&
+                                                        value !== null &&
+                                                        !value?.label
+                                                          ? '0.75rem'
+                                                          : 'inherit',
+                                                      m: 0,
+                                                    }}
+                                                  >
+                                                    {displayValue}
+                                                  </Typography>
+                                                </Box>
+                                              )
+                                            })}
+                                      </>
+                                    )}
+                                  </Box>
                                 ) : (
-                                  <>
-                                    {standard.complianceStatus === 'Overridden' ? (
-                                      <Alert severity="warning" sx={{ mb: 2 }}>
+                                  <Typography
+                                    variant="body1"
+                                    sx={{
+                                      whiteSpace: 'pre-wrap',
+                                      color:
+                                        standard.complianceStatus === 'Compliant'
+                                          ? 'success.main'
+                                          : standard.complianceStatus === 'Overridden'
+                                            ? 'warning.main'
+                                            : standard.complianceStatus === 'Reporting Disabled'
+                                              ? 'text.secondary'
+                                              : standard.complianceStatus ===
+                                                    'Accepted Deviation' ||
+                                                  standard.complianceStatus === 'Customer Specific'
+                                                ? 'info.main'
+                                                : 'error.main',
+                                      fontWeight:
+                                        standard.complianceStatus === 'Non-Compliant'
+                                          ? 'medium'
+                                          : 'inherit',
+                                    }}
+                                  >
+                                    {standard.complianceStatus === 'Reporting Disabled' ? (
+                                      <Alert severity="info" sx={{ mt: 1 }}>
+                                        Reporting is disabled for this standard in the template
+                                        configuration.
+                                      </Alert>
+                                    ) : standard.complianceStatus === 'Overridden' ? (
+                                      <Alert severity="warning" sx={{ mt: 1 }}>
                                         This setting is configured by template:{' '}
                                         {standard.overridingTemplateName ||
                                           standard.overridingTemplateId}
                                       </Alert>
                                     ) : standard.complianceStatus === 'Compliant' ? (
                                       <>
-                                        {/* Show Current value property-by-property for compliant standards */}
+                                        {/* Show Current value property-by-property in card view */}
                                         {standard.currentTenantValue?.CurrentValue !== undefined ? (
                                           typeof standard.currentTenantValue.CurrentValue ===
                                             'object' &&
@@ -2209,25 +2948,18 @@ const Page = () => {
                                       </>
                                     ) : (
                                       <>
-                                        {standard.currentTenantValue?.Value === false && (
-                                          <Alert severity="warning" sx={{ mb: 2 }}>
+                                        {(standard.currentTenantValue?.Value === false ||
+                                          standard.currentTenantValue === false) && (
+                                          <Alert severity="warning" sx={{ mt: 1 }}>
                                             This setting is not configured correctly
                                           </Alert>
                                         )}
-                                        {/* Show Current value property-by-property for non-compliant standards */}
-                                        {standard.currentTenantValue?.CurrentValue !== undefined &&
-                                          (typeof standard.currentTenantValue.CurrentValue ===
+                                        {/* Show Current value property-by-property for non-compliant standards in card view */}
+                                        {standard.currentTenantValue?.CurrentValue !== undefined ? (
+                                          typeof standard.currentTenantValue.CurrentValue ===
                                             'object' &&
                                           standard.currentTenantValue.CurrentValue !== null ? (
-                                            <Stack
-                                              spacing={2}
-                                              sx={{
-                                                mt:
-                                                  standard.currentTenantValue?.Value === false
-                                                    ? 0
-                                                    : 2,
-                                              }}
-                                            >
+                                            <Stack spacing={2}>
                                               <Typography
                                                 variant="caption"
                                                 sx={{
@@ -2340,15 +3072,7 @@ const Page = () => {
                                               })}
                                             </Stack>
                                           ) : (
-                                            <Box
-                                              sx={{
-                                                mt:
-                                                  standard.currentTenantValue?.Value === false
-                                                    ? 0
-                                                    : 2,
-                                                mb: 2,
-                                              }}
-                                            >
+                                            <Box>
                                               <Typography
                                                 variant="caption"
                                                 sx={{
@@ -2384,441 +3108,35 @@ const Page = () => {
                                                 </Typography>
                                               </Box>
                                             </Box>
-                                          ))}
+                                          )
+                                        ) : standard.currentTenantValue !== undefined &&
+                                          standard.currentTenantValue?.Value !== true &&
+                                          standard.currentTenantValue?.Value !== false ? (
+                                          <Box sx={{ mt: 1 }}>
+                                            {String(
+                                              standard.currentTenantValue?.Value !== undefined
+                                                ? standard.currentTenantValue?.Value
+                                                : standard.currentTenantValue
+                                            )}
+                                          </Box>
+                                        ) : standard.currentTenantValue === undefined ||
+                                          (standard.currentTenantValue?.Value === null &&
+                                            standard.currentTenantValue?.CurrentValue ===
+                                              undefined &&
+                                            standard.currentTenantValue?.ExpectedValue ===
+                                              undefined) ? (
+                                          <Alert severity="info" sx={{ mt: 1 }}>
+                                            This setting is not configured, or data has not been
+                                            collected. If you are getting this after data
+                                            collection, the tenant might not be licensed for this
+                                            feature
+                                          </Alert>
+                                        ) : null}
                                       </>
                                     )}
-
-                                    {/* Only show values if they're not simple true/false that's already covered by the alerts above */}
-                                    {!(
-                                      standard.complianceStatus === 'Compliant' &&
-                                      (standard.currentTenantValue?.Value === true ||
-                                        standard.currentTenantValue?.Value === false)
-                                    ) &&
-                                      Object.entries(standard.currentTenantValue)
-                                        .filter(
-                                          ([key]) =>
-                                            key !== 'LastRefresh' &&
-                                            key !== 'CurrentValue' &&
-                                            key !== 'ExpectedValue' &&
-                                            // Skip showing the Value field separately if it's just true/false
-                                            !(
-                                              key === 'Value' &&
-                                              (standard.currentTenantValue?.Value === true ||
-                                                standard.currentTenantValue?.Value === false)
-                                            )
-                                        )
-                                        .map(([key, value]) => {
-                                          const actualValue = key === 'Value' ? value : value
-
-                                          const standardValueForKey =
-                                            standard.standardValue &&
-                                            typeof standard.standardValue === 'object'
-                                              ? standard.standardValue[key]
-                                              : undefined
-
-                                          const isDifferent =
-                                            standardValueForKey !== undefined &&
-                                            JSON.stringify(actualValue) !==
-                                              JSON.stringify(standardValueForKey)
-
-                                          // Format the display value
-                                          let displayValue
-                                          if (typeof value === 'object' && value !== null) {
-                                            displayValue =
-                                              value?.label || JSON.stringify(value, null, 2)
-                                          } else if (value === true) {
-                                            displayValue = 'Enabled'
-                                          } else if (value === false) {
-                                            displayValue = 'Disabled'
-                                          } else {
-                                            displayValue = String(value)
-                                          }
-
-                                          return (
-                                            <Box
-                                              key={key}
-                                              sx={{ display: 'flex', mb: 0.5, flexWrap: 'wrap' }}
-                                            >
-                                              <Typography
-                                                variant="body2"
-                                                sx={{ fontWeight: 'medium', mr: 1, flexShrink: 0 }}
-                                              >
-                                                {key}:
-                                              </Typography>
-                                              <Typography
-                                                variant="body2"
-                                                component="pre"
-                                                sx={{
-                                                  color:
-                                                    standard.complianceStatus === 'Compliant'
-                                                      ? 'success.main'
-                                                      : isDifferent
-                                                        ? 'error.main'
-                                                        : 'inherit',
-                                                  fontWeight:
-                                                    standard.complianceStatus === 'Non-Compliant' &&
-                                                    isDifferent
-                                                      ? 'medium'
-                                                      : 'inherit',
-                                                  wordBreak: 'break-word',
-                                                  overflowWrap: 'break-word',
-                                                  whiteSpace: 'pre-wrap',
-                                                  flex: 1,
-                                                  minWidth: 0,
-                                                  fontFamily:
-                                                    typeof value === 'object' &&
-                                                    value !== null &&
-                                                    !value?.label
-                                                      ? 'monospace'
-                                                      : 'inherit',
-                                                  fontSize:
-                                                    typeof value === 'object' &&
-                                                    value !== null &&
-                                                    !value?.label
-                                                      ? '0.75rem'
-                                                      : 'inherit',
-                                                  m: 0,
-                                                }}
-                                              >
-                                                {displayValue}
-                                              </Typography>
-                                            </Box>
-                                          )
-                                        })}
-                                  </>
+                                  </Typography>
                                 )}
-                              </Box>
-                            ) : (
-                              <Typography
-                                variant="body1"
-                                sx={{
-                                  whiteSpace: 'pre-wrap',
-                                  color:
-                                    standard.complianceStatus === 'Compliant'
-                                      ? 'success.main'
-                                      : standard.complianceStatus === 'Overridden'
-                                        ? 'warning.main'
-                                        : standard.complianceStatus === 'Reporting Disabled'
-                                          ? 'text.secondary'
-                                          : 'error.main',
-                                  fontWeight:
-                                    standard.complianceStatus === 'Non-Compliant'
-                                      ? 'medium'
-                                      : 'inherit',
-                                }}
-                              >
-                                {standard.complianceStatus === 'Reporting Disabled' ? (
-                                  <Alert severity="info" sx={{ mt: 1 }}>
-                                    Reporting is disabled for this standard in the template
-                                    configuration.
-                                  </Alert>
-                                ) : standard.complianceStatus === 'Overridden' ? (
-                                  <Alert severity="warning" sx={{ mt: 1 }}>
-                                    This setting is configured by template:{' '}
-                                    {standard.overridingTemplateName ||
-                                      standard.overridingTemplateId}
-                                  </Alert>
-                                ) : standard.complianceStatus === 'Compliant' ? (
-                                  <>
-                                    {/* Show Current value property-by-property in card view */}
-                                    {standard.currentTenantValue?.CurrentValue !== undefined ? (
-                                      typeof standard.currentTenantValue.CurrentValue ===
-                                        'object' &&
-                                      standard.currentTenantValue.CurrentValue !== null ? (
-                                        <Stack spacing={2}>
-                                          <Typography
-                                            variant="caption"
-                                            sx={{
-                                              fontWeight: 600,
-                                              color: 'text.secondary',
-                                              textTransform: 'uppercase',
-                                              letterSpacing: 0.5,
-                                            }}
-                                          >
-                                            Current Configuration
-                                          </Typography>
-                                          {Object.entries(
-                                            standard.currentTenantValue.CurrentValue
-                                          ).map(([key, val]) => (
-                                            <Box key={key}>
-                                              <Typography
-                                                variant="subtitle2"
-                                                sx={{
-                                                  fontWeight: 600,
-                                                  mb: 1,
-                                                  color: 'success.main',
-                                                }}
-                                              >
-                                                {key}
-                                              </Typography>
-                                              <Box
-                                                sx={{
-                                                  p: 1.5,
-                                                  bgcolor: 'success.lighter',
-                                                  borderRadius: '12px',
-                                                  border: '2px solid',
-                                                  borderColor: 'success.main',
-                                                  position: 'relative',
-                                                }}
-                                              >
-                                                <Box
-                                                  sx={{
-                                                    position: 'absolute',
-                                                    top: -8,
-                                                    right: -8,
-                                                    width: 24,
-                                                    height: 24,
-                                                    borderRadius: '50%',
-                                                    bgcolor: 'success.main',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                  }}
-                                                >
-                                                  <Check sx={{ color: 'white', fontSize: 16 }} />
-                                                </Box>
-                                                <Typography
-                                                  variant="body2"
-                                                  sx={{
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.8125rem',
-                                                    whiteSpace: 'pre-wrap',
-                                                    wordBreak: 'break-word',
-                                                    color: 'success.dark',
-                                                  }}
-                                                >
-                                                  {val !== undefined
-                                                    ? JSON.stringify(val, null, 2)
-                                                    : 'Not set'}
-                                                </Typography>
-                                              </Box>
-                                            </Box>
-                                          ))}
-                                        </Stack>
-                                      ) : (
-                                        <Box sx={{ mt: 2 }}>
-                                          <Typography
-                                            variant="caption"
-                                            sx={{
-                                              fontWeight: 600,
-                                              color: 'text.secondary',
-                                              textTransform: 'uppercase',
-                                              letterSpacing: 0.5,
-                                              display: 'block',
-                                              mb: 1,
-                                            }}
-                                          >
-                                            Current Configuration
-                                          </Typography>
-                                          <Box
-                                            sx={{
-                                              p: 1.5,
-                                              bgcolor: 'success.lighter',
-                                              borderRadius: '12px',
-                                              border: '2px solid',
-                                              borderColor: 'success.main',
-                                            }}
-                                          >
-                                            <Typography
-                                              variant="body2"
-                                              sx={{
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.8125rem',
-                                                whiteSpace: 'pre-wrap',
-                                                wordBreak: 'break-word',
-                                                color: 'success.dark',
-                                              }}
-                                            >
-                                              {String(standard.currentTenantValue.CurrentValue)}
-                                            </Typography>
-                                          </Box>
-                                        </Box>
-                                      )
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <>
-                                    {(standard.currentTenantValue?.Value === false ||
-                                      standard.currentTenantValue === false) && (
-                                      <Alert severity="warning" sx={{ mt: 1 }}>
-                                        This setting is not configured correctly
-                                      </Alert>
-                                    )}
-                                    {/* Show Current value property-by-property for non-compliant standards in card view */}
-                                    {standard.currentTenantValue?.CurrentValue !== undefined ? (
-                                      typeof standard.currentTenantValue.CurrentValue ===
-                                        'object' &&
-                                      standard.currentTenantValue.CurrentValue !== null ? (
-                                        <Stack spacing={2}>
-                                          <Typography
-                                            variant="caption"
-                                            sx={{
-                                              fontWeight: 600,
-                                              color: 'text.secondary',
-                                              textTransform: 'uppercase',
-                                              letterSpacing: 0.5,
-                                            }}
-                                          >
-                                            Current Configuration
-                                          </Typography>
-                                          {Object.entries(
-                                            standard.currentTenantValue.CurrentValue
-                                          ).map(([key, val]) => {
-                                            // Compare with expected value for this property
-                                            const expectedVal =
-                                              standard.currentTenantValue?.ExpectedValue?.[key]
-                                            const isMatch = (() => {
-                                              if (expectedVal === undefined) return false
-                                              // Deep comparison handling nested objects and case-insensitive strings
-                                              const compareDeep = (v1, v2) => {
-                                                if (
-                                                  typeof v1 === 'string' &&
-                                                  typeof v2 === 'string'
-                                                ) {
-                                                  return v1.toLowerCase() === v2.toLowerCase()
-                                                }
-                                                if (
-                                                  typeof v1 === 'object' &&
-                                                  v1 !== null &&
-                                                  typeof v2 === 'object' &&
-                                                  v2 !== null
-                                                ) {
-                                                  return JSON.stringify(v1) === JSON.stringify(v2)
-                                                }
-                                                return JSON.stringify(v1) === JSON.stringify(v2)
-                                              }
-                                              return compareDeep(val, expectedVal)
-                                            })()
-
-                                            return (
-                                              <Box key={key}>
-                                                <Typography
-                                                  variant="subtitle2"
-                                                  sx={{
-                                                    fontWeight: 600,
-                                                    mb: 1,
-                                                    color: isMatch
-                                                      ? 'success.main'
-                                                      : 'warning.main',
-                                                  }}
-                                                >
-                                                  {key}
-                                                </Typography>
-                                                <Box
-                                                  sx={{
-                                                    p: 1.5,
-                                                    bgcolor: isMatch
-                                                      ? 'success.lighter'
-                                                      : 'action.hover',
-                                                    borderRadius: isMatch ? '12px' : 1,
-                                                    border: isMatch ? '2px solid' : '1px solid',
-                                                    borderColor: isMatch
-                                                      ? 'success.main'
-                                                      : 'divider',
-                                                    position: 'relative',
-                                                  }}
-                                                >
-                                                  {isMatch && (
-                                                    <Box
-                                                      sx={{
-                                                        position: 'absolute',
-                                                        top: -8,
-                                                        right: -8,
-                                                        width: 24,
-                                                        height: 24,
-                                                        borderRadius: '50%',
-                                                        bgcolor: 'success.main',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                      }}
-                                                    >
-                                                      <Check
-                                                        sx={{ color: 'white', fontSize: 16 }}
-                                                      />
-                                                    </Box>
-                                                  )}
-                                                  <Typography
-                                                    variant="body2"
-                                                    sx={{
-                                                      fontFamily: 'monospace',
-                                                      fontSize: '0.8125rem',
-                                                      whiteSpace: 'pre-wrap',
-                                                      wordBreak: 'break-word',
-                                                      color: isMatch ? 'success.dark' : 'inherit',
-                                                    }}
-                                                  >
-                                                    {val !== undefined
-                                                      ? JSON.stringify(val, null, 2)
-                                                      : 'Not set'}
-                                                  </Typography>
-                                                </Box>
-                                              </Box>
-                                            )
-                                          })}
-                                        </Stack>
-                                      ) : (
-                                        <Box>
-                                          <Typography
-                                            variant="caption"
-                                            sx={{
-                                              fontWeight: 600,
-                                              color: 'text.secondary',
-                                              textTransform: 'uppercase',
-                                              letterSpacing: 0.5,
-                                              display: 'block',
-                                              mb: 2,
-                                            }}
-                                          >
-                                            Current Configuration
-                                          </Typography>
-                                          <Box
-                                            sx={{
-                                              p: 1.5,
-                                              bgcolor: 'action.hover',
-                                              borderRadius: 1,
-                                              border: '1px solid',
-                                              borderColor: 'divider',
-                                            }}
-                                          >
-                                            <Typography
-                                              variant="body2"
-                                              sx={{
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.8125rem',
-                                                whiteSpace: 'pre-wrap',
-                                                wordBreak: 'break-word',
-                                              }}
-                                            >
-                                              {String(standard.currentTenantValue.CurrentValue)}
-                                            </Typography>
-                                          </Box>
-                                        </Box>
-                                      )
-                                    ) : standard.currentTenantValue !== undefined &&
-                                      standard.currentTenantValue?.Value !== true &&
-                                      standard.currentTenantValue?.Value !== false ? (
-                                      <Box sx={{ mt: 1 }}>
-                                        {String(
-                                          standard.currentTenantValue?.Value !== undefined
-                                            ? standard.currentTenantValue?.Value
-                                            : standard.currentTenantValue
-                                        )}
-                                      </Box>
-                                    ) : standard.currentTenantValue === undefined ||
-                                      (standard.currentTenantValue?.Value === null &&
-                                        standard.currentTenantValue?.CurrentValue === undefined &&
-                                        standard.currentTenantValue?.ExpectedValue ===
-                                          undefined) ? (
-                                      <Alert severity="info" sx={{ mt: 1 }}>
-                                        This setting is not configured, or data has not been
-                                        collected. If you are getting this after data collection,
-                                        the tenant might not be licensed for this feature
-                                      </Alert>
-                                    ) : null}
-                                  </>
-                                )}
-                              </Typography>
+                              </>
                             )}
                           </Box>
                         </Card>

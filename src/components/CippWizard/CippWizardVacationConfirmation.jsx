@@ -41,21 +41,30 @@ export const CippWizardVacationConfirmation = (props) => {
   const handleSubmit = () => {
     if (values.enableCAExclusion) {
       const policies = Array.isArray(values.PolicyId) ? values.PolicyId : [values.PolicyId]
-      policies.forEach((policy) => {
-        caExclusion.mutate({
-          url: '/api/ExecCAExclusion',
-          data: {
-            tenantFilter,
-            Users: values.Users,
-            PolicyId: policy?.value ?? policy,
-            StartDate: values.startDate,
-            EndDate: values.endDate,
-            vacation: true,
-            reference: values.reference || null,
-            postExecution: values.postExecution || [],
-            excludeLocationAuditAlerts: values.excludeLocationAuditAlerts || false,
-          },
-        })
+      const createTravelPolicy =
+        values.createTravelPolicy &&
+        Array.isArray(values.travelCountries) &&
+        values.travelCountries.length > 0
+      const policyData = policies.map((policy, index) => ({
+        tenantFilter,
+        Users: values.Users,
+        PolicyId: policy?.value ?? policy,
+        StartDate: values.startDate,
+        EndDate: values.endDate,
+        vacation: true,
+        reference: values.reference || null,
+        postExecution: values.postExecution || [],
+        excludeLocationAuditAlerts: values.excludeLocationAuditAlerts || false,
+        // Only send the travel policy fields on the first request so the
+        // temporary policy is scheduled once, not once per selected CA policy
+        ...(index === 0 && createTravelPolicy
+          ? { CreateTravelPolicy: true, TravelCountries: values.travelCountries }
+          : {}),
+      }))
+      caExclusion.mutate({
+        url: '/api/ExecCAExclusion',
+        data: policyData,
+        bulkRequest: true,
       })
     }
 
@@ -76,32 +85,6 @@ export const CippWizardVacationConfirmation = (props) => {
           reference: values.reference || null,
           postExecution: values.postExecution || [],
         },
-      })
-    }
-
-    if (values.enableForwarding) {
-      const forwardingData = {
-        tenantFilter,
-        Users: values.Users,
-        forwardOption: values.forwardOption,
-        KeepCopy: values.forwardKeepCopy || false,
-        startDate: values.startDate,
-        endDate: values.endDate,
-        reference: values.reference || null,
-        postExecution: values.postExecution || [],
-      }
-
-      if (values.forwardOption === 'internalAddress') {
-        forwardingData.ForwardInternal = values.forwardInternal
-      }
-
-      if (values.forwardOption === 'ExternalAddress') {
-        forwardingData.ForwardExternal = values.forwardExternal
-      }
-
-      forwardingVacation.mutate({
-        url: '/api/ExecScheduleForwardingVacation',
-        data: forwardingData,
       })
     }
 
@@ -275,6 +258,23 @@ export const CippWizardVacationConfirmation = (props) => {
                         <div>
                           <Typography variant="body2" color="warning.main">
                             Location-based audit log alerts will be excluded
+                          </Typography>
+                        </div>
+                      )}
+                      {values.createTravelPolicy && (
+                        <div>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Temporary Travel Policy
+                          </Typography>
+                          <Typography variant="body2">
+                            Sign-ins restricted to:{' '}
+                            {Array.isArray(values.travelCountries) &&
+                            values.travelCountries.length > 0
+                              ? values.travelCountries.map((c) => c.label || c.value).join(', ')
+                              : 'Not set'}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            The policy and named location are deleted at the end date
                           </Typography>
                         </div>
                       )}

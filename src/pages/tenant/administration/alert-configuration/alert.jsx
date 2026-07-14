@@ -29,12 +29,14 @@ import { ApiGetCall, ApiPostCall } from '../../../../api/ApiCall'
 import { PlusIcon } from '@heroicons/react/24/outline'
 import { CippFormCondition } from '../../../../components/CippComponents/CippFormCondition'
 import { CippHead } from '../../../../components/CippComponents/CippHead'
+import { useSettings } from '../../../../hooks/use-settings'
 
 const AlertWizard = () => {
   const apiRequest = ApiPostCall({
     relatedQueryKeys: ['ListAlertsQueue', 'ListCurrentAlerts'],
   })
   const router = useRouter()
+  const tenantFilter = useSettings().currentTenant
   const [editAlert, setAlertEdit] = useState(false)
   useEffect(() => {
     if (router.query.id) {
@@ -46,7 +48,37 @@ const AlertWizard = () => {
     url: '/api/ListAlertsQueue',
     relatedQueryKeys: 'ListAlertsQueue',
     queryKey: 'ListCurrentAlerts',
+    data: { tenantFilter },
+    waiting: !!tenantFilter,
   })
+
+  // Fetch the HaloPSA integration config so the PSA Ticket Strategy dropdown can show which
+  // option is the current integration default.
+  const integrationsConfig = ApiGetCall({
+    url: '/api/ListExtensionsConfig',
+    queryKey: 'Integrations',
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+  })
+  const haloDefaultStrategy = integrationsConfig?.data?.HaloPSA?.LinkTicketsToUsers
+    ? 'split'
+    : 'consolidated'
+  const psaStrategyDropdownOptions = [
+    {
+      value: 'split',
+      label:
+        haloDefaultStrategy === 'split'
+          ? 'One ticket per affected user (HaloPSA integration default)'
+          : 'One ticket per affected user',
+    },
+    {
+      value: 'consolidated',
+      label:
+        haloDefaultStrategy === 'consolidated'
+          ? 'One consolidated ticket per tenant (HaloPSA integration default)'
+          : 'One consolidated ticket per tenant',
+    },
+  ]
   const [recurrenceOptions, setRecurrenceOptions] = useState([
     { value: '30m', label: 'Every 30 minutes' },
     { value: '1h', label: 'Every hour' },
@@ -145,35 +177,67 @@ const AlertWizard = () => {
           alert.RawAlert.PostExecution.split(',').includes(opt.value)
         )
         let tenantFilterForForm
-        if (alert.RawAlert.TenantGroup) {
+        if (alert.RawAlert.Tenants) {
+          // Multi tenant alert - parse stored JSON
+          try {
+            const parsedTenants =
+              typeof alert.RawAlert.Tenants === 'string'
+                ? JSON.parse(alert.RawAlert.Tenants)
+                : alert.RawAlert.Tenants
+            tenantFilterForForm = Array.isArray(parsedTenants) ? parsedTenants : [parsedTenants]
+          } catch (error) {
+            console.error('Error parsing Tenants:', error)
+            tenantFilterForForm = [
+              {
+                value: alert.RawAlert.Tenant,
+                label: alert.RawAlert.Tenant,
+                type: 'Tenant',
+              },
+            ]
+          }
+        } else if (alert.RawAlert.TenantGroup) {
           try {
             const tenantGroupObject = JSON.parse(alert.RawAlert.TenantGroup)
-            tenantFilterForForm = {
-              value: tenantGroupObject.value,
-              label: tenantGroupObject.label,
-              type: 'Group',
-              addedFields: tenantGroupObject,
-            }
+            tenantFilterForForm = [
+              {
+                value: tenantGroupObject.value,
+                label: tenantGroupObject.label,
+                type: 'Group',
+                addedFields: tenantGroupObject,
+              },
+            ]
           } catch (error) {
             console.error('Error parsing tenant group:', error)
-            tenantFilterForForm = {
+            tenantFilterForForm = [
+              {
+                value: alert.RawAlert.Tenant,
+                label: alert.RawAlert.Tenant,
+                type: 'Tenant',
+              },
+            ]
+          }
+        } else {
+          // Single tenant
+          tenantFilterForForm = [
+            {
               value: alert.RawAlert.Tenant,
               label: alert.RawAlert.Tenant,
               type: 'Tenant',
-            }
-          }
-        } else {
-          tenantFilterForForm = {
-            value: alert.RawAlert.Tenant,
-            label: alert.RawAlert.Tenant,
-            type: 'Tenant',
-          }
+            },
+          ]
         }
         let startDateTimeForForm = null
         if (alert.RawAlert.DesiredStartTime && alert.RawAlert.DesiredStartTime !== '0') {
           const desiredStartEpoch = parseInt(alert.RawAlert.DesiredStartTime)
           startDateTimeForForm = desiredStartEpoch
         }
+        // Resolve the stored strategy ('split' / 'consolidated' / '' for legacy/inherit) to the
+        // matching dynamic option. When empty, fall back to the current integration default so
+        // the dropdown always shows a meaningful selection.
+        const storedStrategy = alert.RawAlert.PsaTicketStrategy || haloDefaultStrategy
+        const psaStrategyValue =
+          psaStrategyDropdownOptions.find((opt) => opt.value === storedStrategy) ||
+          psaStrategyDropdownOptions[0]
         const resetObject = {
           tenantFilter: tenantFilterForForm,
           excludedTenants: excludedTenantsFormatted,
@@ -183,6 +247,7 @@ const AlertWizard = () => {
           startDateTime: startDateTimeForForm,
           CustomSubject: alert.RawAlert.CustomSubject || '',
           AlertComment: alert.RawAlert.AlertComment || '',
+          PsaTicketStrategy: psaStrategyValue,
         }
         if (usedCommand?.requiresInput && alert.RawAlert.Parameters) {
           try {
@@ -472,13 +537,16 @@ const AlertWizard = () => {
       return {}
     }
 
+    const tenants = Array.isArray(values.tenantFilter) ? values.tenantFilter : [values.tenantFilter]
+    const tenantLabel = tenants.map((t) => t.label || t.value).join(', ')
+
     const postObject = {
       RowKey: router.query.clone ? undefined : router.query.id ? router.query.id : undefined,
       tenantFilter: values.tenantFilter,
       excludedTenants: values.excludedTenants,
       Name: values.CustomSubject
-        ? `${values.tenantFilter?.label || values.tenantFilter?.value}: ${values.CustomSubject}`
-        : `${values.tenantFilter?.label || values.tenantFilter?.value}: ${values.command.label}`,
+        ? `${tenantLabel}: ${values.CustomSubject}`
+        : `${tenantLabel}: ${values.command.label}`,
       Command: { value: `Get-CIPPAlert${values.command.value.name}` },
       Parameters: getInputParams(),
       ScheduledTime: Math.floor(new Date().getTime() / 1000) + 60,
@@ -487,9 +555,10 @@ const AlertWizard = () => {
       PostExecution: values.postExecution,
       AlertComment: values.AlertComment,
       CustomSubject: values.CustomSubject,
+      PsaTicketStrategy: values.PsaTicketStrategy?.value ?? values.PsaTicketStrategy ?? '',
     }
     apiRequest.mutate(
-      { url: '/api/AddScheduledItem?hidden=true', data: postObject },
+      { url: '/api/AddScriptedAlert', data: postObject },
       {
         onSuccess: () => {
           // Prevent form reload after successful save
@@ -580,23 +649,17 @@ const AlertWizard = () => {
                                 }}
                               />
                             </Grid>
-                            <CippFormCondition
-                              field="tenantFilter"
-                              formControl={formControl}
-                              compareType="valueContains"
-                              compareValue="AllTenants"
-                              clearOnHide={false}
-                            >
-                              <Grid size={12}>
-                                <CippFormTenantSelector
-                                  multiple={true}
-                                  label="Excluded Tenants for alert"
-                                  formControl={formControl}
-                                  allTenants={false}
-                                  name="excludedTenants"
-                                />
-                              </Grid>
-                            </CippFormCondition>
+                            <Grid size={12}>
+                              <CippFormTenantSelector
+                                multiple={true}
+                                label="Excluded Tenants for alert"
+                                formControl={formControl}
+                                allTenants={false}
+                                includeGroups={false}
+                                name="excludedTenants"
+                                helperText="Optional. Tenants selected here are skipped even if they fall within the included tenants or group."
+                              />
+                            </Grid>
                           </Grid>
                         </CippButtonCard>
                       </Grid>
@@ -884,32 +947,29 @@ const AlertWizard = () => {
                             <Grid size={12}>
                               <CippFormTenantSelector
                                 allTenants={true}
-                                multiple={false}
+                                multiple={true}
                                 formControl={formControl}
                                 label="Included Tenants for alert"
                                 includeGroups={true}
+                                required={true}
                                 validators={{
-                                  required: { value: true, message: 'This field is required' },
+                                  validate: (value) =>
+                                    value?.length > 0 ||
+                                    'At least one tenant or *All Tenants must be selected',
                                 }}
                               />
                             </Grid>
-                            <CippFormCondition
-                              field="tenantFilter"
-                              formControl={formControl}
-                              compareType="contains"
-                              compareValue="AllTenants"
-                              clearOnHide={false}
-                            >
-                              <Grid size={12}>
-                                <CippFormTenantSelector
-                                  multiple={true}
-                                  label="Excluded Tenants for alert"
-                                  formControl={formControl}
-                                  allTenants={false}
-                                  name="excludedTenants"
-                                />
-                              </Grid>
-                            </CippFormCondition>
+                            <Grid size={12}>
+                              <CippFormTenantSelector
+                                multiple={true}
+                                label="Excluded Tenants for alert"
+                                formControl={formControl}
+                                allTenants={false}
+                                includeGroups={false}
+                                name="excludedTenants"
+                                helperText="Optional. Tenants selected here are skipped even if they fall within the included tenants or group."
+                              />
+                            </Grid>
                           </Grid>
                         </CippButtonCard>
                       </Grid>
@@ -1060,6 +1120,27 @@ const AlertWizard = () => {
                                 options={postExecutionOptions}
                               />
                             </Grid>
+
+                            <CippFormCondition
+                              field="postExecution"
+                              compareType="valueEq"
+                              compareValue="PSA"
+                              formControl={formControl}
+                            >
+                              <Grid size={12}>
+                                <CippFormComponent
+                                  type="autoComplete"
+                                  name="PsaTicketStrategy"
+                                  label="PSA Ticket Strategy"
+                                  formControl={formControl}
+                                  multiple={false}
+                                  creatable={false}
+                                  helperText="Overrides the HaloPSA Link Tickets to affected Users toggle for this alert. Handy for wide alerts (e.g. users without MFA) where you want one ticket per user or one ticket per tenant."
+                                  options={psaStrategyDropdownOptions}
+                                />
+                              </Grid>
+                            </CippFormCondition>
+
                             <Grid size={12}>
                               <CippFormComponent
                                 type="textField"

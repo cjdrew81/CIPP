@@ -10,7 +10,7 @@ import { Grid } from '@mui/system'
 import { ApiGetCall } from '../../api/ApiCall'
 import { useSettings } from '../../hooks/use-settings'
 import { useWatch } from 'react-hook-form'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { Sync } from '@mui/icons-material'
 
@@ -20,6 +20,9 @@ const CippAddEditUser = (props) => {
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [displayNameManuallySet, setDisplayNameManuallySet] = useState(false)
   const [usernameManuallySet, setUsernameManuallySet] = useState(false)
+  // Tracks the template already applied to the form so we can tell a first
+  // apply (fill empty fields) apart from a switch (replace/clear stale values)
+  const appliedTemplateKeyRef = useRef(null)
   const router = useRouter()
   const { userId } = router.query
 
@@ -50,7 +53,7 @@ const CippAddEditUser = (props) => {
   // Get all groups for the tenant
   const tenantGroups = ApiGetCall({
     url: `/api/ListGroups?tenantFilter=${tenantDomain}`,
-    queryKey: `ListGroups-${tenantDomain}`,
+    queryKey: `TenantGroupsList-${tenantDomain}`,
     refetchOnMount: false,
     refetchOnReconnect: false,
   })
@@ -71,6 +74,25 @@ const CippAddEditUser = (props) => {
     return []
   }, [manualEntryMappings.isSuccess, manualEntryMappings.data])
 
+  // Prefill manual entry custom data fields in edit mode. The fetched user's extension values sit
+  // at the top level of the form (edit.jsx resets with the spread user object), while these fields
+  // live under customData.*
+  const currentUserObjectId = useWatch({ control: formControl.control, name: 'id' })
+  useEffect(() => {
+    if (formType === 'add' || !currentUserObjectId || currentTenantManualMappings.length === 0)
+      return
+    currentTenantManualMappings.forEach((mapping) => {
+      const attribute = mapping.customDataAttribute?.value
+      if (!attribute) return
+      const existing = formControl.getValues(`customData.${attribute}`)
+      if (existing !== undefined && existing !== null && existing !== '') return
+      const value = formControl.getValues(attribute)
+      if (value !== undefined && value !== null) {
+        formControl.setValue(`customData.${attribute}`, value)
+      }
+    })
+  }, [formType, currentUserObjectId, currentTenantManualMappings])
+
   // Make new list of groups by removing userGroups from tenantGroups
   const filteredTenantGroups = useMemo(() => {
     if (tenantGroups.isSuccess && userGroups.isSuccess) {
@@ -83,7 +105,34 @@ const CippAddEditUser = (props) => {
     return []
   }, [tenantGroups.isSuccess, userGroups.isSuccess, tenantGroups.data, userGroups.data])
 
-  const watcher = useWatch({ control: formControl.control })
+  const watcher = useWatch({
+    control: formControl.control,
+    name: ['givenName', 'surname', 'userTemplate', 'AddToGroups'],
+  })
+
+  // Debounce givenName/surname so auto-generated displayName/username
+  // don't trigger setValue on every keystroke
+  const rawGivenName = watcher[0]
+  const rawSurname = watcher[1]
+  const [debouncedName, setDebouncedName] = useState({
+    givenName: rawGivenName,
+    surname: rawSurname,
+  })
+  const debounceRef = useRef(null)
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      setDebouncedName({ givenName: rawGivenName, surname: rawSurname })
+    }, 250)
+    return () => clearTimeout(debounceRef.current)
+  }, [rawGivenName, rawSurname])
+
+  // useWatch with a name array returns values in the same order
+  const watchedFields = {
+    givenName: debouncedName.givenName,
+    surname: debouncedName.surname,
+    userTemplate: watcher[2],
+    AddToGroups: watcher[3],
+  }
 
   // Helper function to generate username from template format
   const generateUsername = (
@@ -100,14 +149,22 @@ const CippAddEditUser = (props) => {
 
     let username = formatString
 
-    // Replace %FirstName[n]% patterns (extract first n characters)
+    // Replace %FirstName[n]% patterns (extract first n characters per word)
     username = username.replace(/%FirstName\[(\d+)\]%/gi, (match, num) => {
-      return firstName.substring(0, parseInt(num))
+      const n = parseInt(num)
+      return firstName
+        .split(/\s+/)
+        .map((word) => word.substring(0, n))
+        .join('')
     })
 
-    // Replace %LastName[n]% patterns (extract first n characters)
+    // Replace %LastName[n]% patterns (extract first n characters per word)
     username = username.replace(/%LastName\[(\d+)\]%/gi, (match, num) => {
-      return lastName.substring(0, parseInt(num))
+      const n = parseInt(num)
+      return lastName
+        .split(/\s+/)
+        .map((word) => word.substring(0, n))
+        .join('')
     })
 
     // Replace %FirstName% and %LastName%
@@ -142,11 +199,11 @@ const CippAddEditUser = (props) => {
 
   useEffect(() => {
     //if watch.firstname changes, and watch.lastname changes, set displayname to firstname + lastname
-    if (watcher.givenName && watcher.surname && formType === 'add') {
+    if (watchedFields.givenName && watchedFields.surname && formType === 'add') {
       // Only auto-set display name if user hasn't manually changed it
       if (!displayNameManuallySet) {
         // Build base display name from first and last name
-        let displayName = `${watcher.givenName} ${watcher.surname}`
+        let displayName = `${watchedFields.givenName} ${watchedFields.surname}`
 
         // Add template displayName as suffix if it exists
         if (selectedTemplate?.displayName) {
@@ -181,8 +238,8 @@ const CippAddEditUser = (props) => {
 
           const generatedUsername = generateUsername(
             formatString,
-            watcher.givenName,
-            watcher.surname,
+            watchedFields.givenName,
+            watchedFields.surname,
             spaceHandling,
             spaceReplacement
           )
@@ -192,23 +249,35 @@ const CippAddEditUser = (props) => {
         }
       }
     }
-  }, [watcher.givenName, watcher.surname, selectedTemplate])
+  }, [watchedFields.givenName, watchedFields.surname, selectedTemplate])
 
   // Reset manual flags and selected template when form is reset (fields become empty)
   useEffect(() => {
-    if (formType === 'add' && !watcher.givenName && !watcher.surname && !watcher.userTemplate) {
+    if (
+      formType === 'add' &&
+      !watchedFields.givenName &&
+      !watchedFields.surname &&
+      !watchedFields.userTemplate
+    ) {
       setDisplayNameManuallySet(false)
       setUsernameManuallySet(false)
       // Only clear selected template if it's not the default template
       if (selectedTemplate && !selectedTemplate.defaultForTenant) {
         setSelectedTemplate(null)
+        appliedTemplateKeyRef.current = null
       }
     }
-  }, [watcher.givenName, watcher.surname, watcher.userTemplate, formType, selectedTemplate])
+  }, [
+    watchedFields.givenName,
+    watchedFields.surname,
+    watchedFields.userTemplate,
+    formType,
+    selectedTemplate,
+  ])
 
   // Auto-select default template for tenant
   useEffect(() => {
-    if (formType === 'add' && userTemplates.isSuccess && !watcher.userTemplate) {
+    if (formType === 'add' && userTemplates.isSuccess && !watchedFields.userTemplate) {
       const defaultTemplate = userTemplates.data?.find(
         (template) => template.defaultForTenant === true
       )
@@ -225,88 +294,125 @@ const CippAddEditUser = (props) => {
 
   // Auto-populate fields when template selected
   useEffect(() => {
-    if (formType === 'add' && watcher.userTemplate?.addedFields) {
-      const template = watcher.userTemplate.addedFields
-      setSelectedTemplate(template)
+    if (formType !== 'add' || !watchedFields.userTemplate?.addedFields) return
+    const template = watchedFields.userTemplate.addedFields
+    const templateKey = watchedFields.userTemplate.value ?? template.GUID ?? template.templateName
 
-      // Reset manual edit flags when template changes
-      setDisplayNameManuallySet(false)
-      setUsernameManuallySet(false)
+    // Distinguish the first apply from a switch. On a switch we replace
+    // template-driven fields (and clear ones the new template doesn't define)
+    // so stale values from the previous template don't linger. On the first
+    // apply we only fill fields that have a template value, so we don't clobber
+    // input the user already entered or copied from another user.
+    const isSwitch =
+      appliedTemplateKeyRef.current !== null && appliedTemplateKeyRef.current !== templateKey
+    appliedTemplateKeyRef.current = templateKey
 
-      // Only set fields if they don't already have values (don't override user input)
-      const setFieldIfEmpty = (fieldName, value) => {
-        if (!watcher[fieldName] && value) {
-          formControl.setValue(fieldName, value)
-        }
-      }
+    setSelectedTemplate(template)
 
-      // Populate form fields from template
-      if (template.primDomain) {
-        // If primDomain is an object, use it as-is; if it's a string, convert to object
-        const primDomainValue =
-          typeof template.primDomain === 'string'
-            ? { label: template.primDomain, value: template.primDomain }
-            : template.primDomain
-        setFieldIfEmpty('primDomain', primDomainValue)
-      }
-      if (template.usageLocation) {
-        // Handle both object and string formats
-        const usageLocationCode =
-          typeof template.usageLocation === 'string'
-            ? template.usageLocation
-            : template.usageLocation?.value
-        const country = countryList.find((c) => c.Code === usageLocationCode)
-        if (country) {
-          setFieldIfEmpty('usageLocation', {
-            label: country.Name,
-            value: country.Code,
-          })
-        }
-      }
-      setFieldIfEmpty('jobTitle', template.jobTitle)
-      setFieldIfEmpty('streetAddress', template.streetAddress)
-      setFieldIfEmpty('city', template.city)
-      setFieldIfEmpty('state', template.state)
-      setFieldIfEmpty('postalCode', template.postalCode)
-      setFieldIfEmpty('country', template.country)
-      setFieldIfEmpty('companyName', template.companyName)
-      setFieldIfEmpty('department', template.department)
-      setFieldIfEmpty('mobilePhone', template.mobilePhone)
-      setFieldIfEmpty('businessPhones[0]', template.businessPhones)
+    // Reset manual edit flags when template changes
+    setDisplayNameManuallySet(false)
+    setUsernameManuallySet(false)
 
-      // Handle licenses - need to match the format expected by CippFormLicenseSelector
-      if (template.licenses && Array.isArray(template.licenses)) {
-        setFieldIfEmpty('licenses', template.licenses)
-      }
-
-      // Handle groups from template
-      const templateGroups = template.addToGroups || template.groupMemberships
-      if (templateGroups) {
-        const rawGroups = Array.isArray(templateGroups) ? templateGroups : [templateGroups]
-        const groups = rawGroups.map((g) => {
-          if (g.label && g.value) return g
-          const groupType = g.groupTypes?.includes('Unified')
-            ? 'Microsoft 365'
-            : g.mailEnabled && !g.groupTypes?.includes('Unified')
-              ? g.securityEnabled
-                ? 'Mail-Enabled Security'
-                : 'Distribution list'
-              : 'Security'
-          return {
-            label: g.displayName,
-            value: g.id,
-            addedFields: { groupType },
-          }
-        })
-        if (groups.length > 0) {
-          const currentGroups = watcher.AddToGroups
-          if (!currentGroups || (Array.isArray(currentGroups) && currentGroups.length === 0)) {
-            formControl.setValue('AddToGroups', groups, { shouldDirty: true })
-          }
-        }
+    // Apply a template value to a field. When the template has a value we set
+    // it; when it doesn't and this is a switch we clear the field (emptyValue)
+    // so the previous template's value doesn't linger.
+    const applyField = (fieldName, value, emptyValue = '') => {
+      const hasValue = Array.isArray(value)
+        ? value.length > 0
+        : value !== undefined && value !== null && value !== ''
+      if (hasValue) {
+        formControl.setValue(fieldName, value, { shouldDirty: true })
+      } else if (isSwitch) {
+        formControl.setValue(fieldName, emptyValue, { shouldDirty: true })
       }
     }
-  }, [watcher.userTemplate, formType])
+
+    // Primary domain - accept both object and string formats
+    const primDomainValue = template.primDomain
+      ? typeof template.primDomain === 'string'
+        ? { label: template.primDomain, value: template.primDomain }
+        : template.primDomain
+      : null
+    applyField('primDomain', primDomainValue, null)
+
+    // Usage location - accept both object and string formats
+    const usageLocationCode =
+      typeof template.usageLocation === 'string'
+        ? template.usageLocation
+        : template.usageLocation?.value
+    const country = usageLocationCode
+      ? countryList.find((c) => c.Code === usageLocationCode)
+      : null
+    applyField(
+      'usageLocation',
+      country ? { label: country.Name, value: country.Code } : null,
+      null
+    )
+
+    applyField('jobTitle', template.jobTitle)
+    applyField('streetAddress', template.streetAddress)
+    applyField('city', template.city)
+    applyField('state', template.state)
+    applyField('postalCode', template.postalCode)
+    applyField('country', template.country)
+    applyField('companyName', template.companyName)
+    applyField('department', template.department)
+    applyField('mobilePhone', template.mobilePhone)
+
+    const templateBusinessPhone = Array.isArray(template.businessPhones)
+      ? template.businessPhones[0]
+      : template.businessPhones
+    applyField('businessPhones', templateBusinessPhone ? [templateBusinessPhone] : [], [])
+
+    // Licenses - match the format expected by CippFormLicenseSelector
+    applyField(
+      'licenses',
+      Array.isArray(template.licenses) ? template.licenses : [],
+      []
+    )
+
+    // Groups from template
+    const templateGroups = template.addToGroups || template.groupMemberships
+    const rawGroups = templateGroups
+      ? Array.isArray(templateGroups)
+        ? templateGroups
+        : [templateGroups]
+      : []
+    const groups = rawGroups.map((g) => {
+      if (g.label && g.value) return g
+      const groupType = g.groupTypes?.includes('Unified')
+        ? 'Microsoft 365'
+        : g.mailEnabled && !g.groupTypes?.includes('Unified')
+          ? g.securityEnabled
+            ? 'Mail-Enabled Security'
+            : 'Distribution list'
+          : 'Security'
+      return {
+        label: g.displayName,
+        value: g.id,
+        addedFields: { groupType },
+      }
+    })
+    applyField('AddToGroups', groups, [])
+
+    // Custom user attributes. On a switch, clear every known attribute field
+    // first so attributes the new template doesn't define don't linger, then
+    // apply the template's values.
+    if (isSwitch) {
+      userSettingsDefaults?.userAttributes
+        ?.filter((attribute) => attribute.value !== 'sponsor')
+        .forEach((attribute) => {
+          formControl.setValue(`defaultAttributes.${attribute.label}.Value`, '', {
+            shouldDirty: true,
+          })
+        })
+    }
+    if (template.defaultAttributes) {
+      Object.entries(template.defaultAttributes).forEach(([key, attr]) => {
+        applyField(`defaultAttributes.${key}.Value`, attr?.Value)
+      })
+    }
+  }, [watchedFields.userTemplate, formType])
 
   return (
     <Grid container spacing={2}>
@@ -769,7 +875,8 @@ const CippAddEditUser = (props) => {
               label: group.displayName,
               value: group.id,
               addedFields: {
-                groupType: group.calculatedGroupType || group.groupType,
+                groupType: group.groupType,
+                calculatedGroupType: group.calculatedGroupType,
               },
             })) || []
           }
@@ -800,11 +907,22 @@ const CippAddEditUser = (props) => {
               label: userGroups.DisplayName,
               value: userGroups.id,
               addedFields: {
-                groupType: userGroups.groupType,
+                groupType: userGroups.calculatedGroupType || userGroups.groupType,
               },
             }))}
             creatable={false}
             formControl={formControl}
+            customAction={{
+              icon: <Sync />,
+              tooltip: 'Refresh groups',
+              onClick: () => {
+                tenantGroups.refetch()
+                if (formType === 'edit') {
+                  userGroups.refetch()
+                }
+              },
+              position: 'outside',
+            }}
           />
         </Grid>
       )}
@@ -848,65 +966,59 @@ const CippAddEditUser = (props) => {
           })}
         </>
       )}
-      {/* Schedule User Creation */}
-      {formType === 'add' && (
-        <>
-          <Grid size={{ xs: 12 }}>
-            <Divider />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <CippFormComponent
-              type="switch"
-              label="Schedule user creation"
-              name="Scheduled.enabled"
-              formControl={formControl}
-            />
-            <CippFormCondition
-              formControl={formControl}
-              field="Scheduled.enabled"
-              compareType="is"
-              compareValue={true}
-            >
-              <Grid size={{ xs: 12 }}>
-                <label>Scheduled creation Date</label>
-                <CippFormComponent
-                  type="datePicker"
-                  name="Scheduled.date"
-                  formControl={formControl}
-                />
-              </Grid>
-              <Grid size={{ xs: 12 }}>
-                <CippFormComponent
-                  type="switch"
-                  label="Send results to Webhook"
-                  name="postExecution.webhook"
-                  formControl={formControl}
-                />
-                <CippFormComponent
-                  type="switch"
-                  label="Send results to E-mail"
-                  name="postExecution.email"
-                  formControl={formControl}
-                />
-                <CippFormComponent
-                  type="switch"
-                  label="Send results to PSA"
-                  name="postExecution.psa"
-                  formControl={formControl}
-                />
-                <CippFormComponent
-                  type="textField"
-                  fullWidth
-                  label="Reference"
-                  name="reference"
-                  placeholder="Enter a reference that will be added to the notification title"
-                  formControl={formControl}
-                />
-              </Grid>
-            </CippFormCondition>
-          </Grid>
-        </>
-      )}
+      {/* Schedule User Creation / Edit */}
+      <>
+        <Grid size={{ xs: 12 }}>
+          <Divider />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <CippFormComponent
+            type="switch"
+            label={formType === 'add' ? 'Schedule user creation' : 'Schedule this user edit'}
+            name="Scheduled.enabled"
+            formControl={formControl}
+          />
+          <CippFormCondition
+            formControl={formControl}
+            field="Scheduled.enabled"
+            compareType="is"
+            compareValue={true}
+          >
+            <Grid size={{ xs: 12 }}>
+              <label>{formType === 'add' ? 'Scheduled creation Date' : 'Scheduled edit date'}</label>
+              <CippFormComponent type="datePicker" name="Scheduled.date" formControl={formControl} />
+            </Grid>
+            <Grid size={{ xs: 12 }}>
+              <CippFormComponent
+                type="switch"
+                label="Send results to Webhook"
+                name="postExecution.webhook"
+                formControl={formControl}
+              />
+              <CippFormComponent
+                type="switch"
+                label="Send results to E-mail"
+                name="postExecution.email"
+                formControl={formControl}
+              />
+              <CippFormComponent
+                type="switch"
+                label="Send results to PSA"
+                name="postExecution.psa"
+                formControl={formControl}
+              />
+              <CippFormComponent
+                type="textField"
+                fullWidth
+                label="Reference"
+                name="reference"
+                placeholder="Enter a reference that will be added to the notification title"
+                formControl={formControl}
+              />
+            </Grid>
+          </CippFormCondition>
+        </Grid>
+      </>
     </Grid>
   )
 }
