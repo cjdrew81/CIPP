@@ -8,9 +8,12 @@ import { ApiGetCall } from '../api/ApiCall.jsx'
 import { CippSponsor } from '../components/CippComponents/CippSponsor'
 import { useSettings } from '../hooks/use-settings'
 
-const SIDE_NAV_WIDTH = 290
-const SIDE_NAV_COLLAPSED_WIDTH = 73 // icon size + padding + border right
-const TOP_NAV_HEIGHT = 64
+import {
+  BANNER_HEIGHT_VAR,
+  SIDE_NAV_COLLAPSED_WIDTH,
+  SIDE_NAV_WIDTH,
+  TOP_NAV_HEIGHT,
+} from './constants'
 
 const isPathPrefix = (pathname, itemPath) => {
   if (!pathname || !itemPath) return false
@@ -206,11 +209,11 @@ export const SideNav = (props) => {
             onMouseLeave: () => setHovered(false),
             sx: {
               backgroundColor: 'background.default',
-              height: `calc(100% - ${TOP_NAV_HEIGHT}px)`,
+              height: `calc(100% - ${TOP_NAV_HEIGHT}px - ${BANNER_HEIGHT_VAR})`,
               overflowX: 'hidden',
               overflowY: 'auto',
               scrollbarGutter: 'stable',
-              top: TOP_NAV_HEIGHT,
+              top: `calc(${TOP_NAV_HEIGHT}px + ${BANNER_HEIGHT_VAR})`,
               transition: 'width 250ms ease-in-out',
               width: collapse ? SIDE_NAV_COLLAPSED_WIDTH : SIDE_NAV_WIDTH,
               zIndex: (theme) => theme.zIndex.appBar - 100,
@@ -224,6 +227,9 @@ export const SideNav = (props) => {
               flexDirection: 'column',
               height: '100%',
               p: 2,
+              // The breadcrumb rail across the seam starts 10px under the top nav; starting
+              // the Bookmarks header at the same offset lets the two rows share a line.
+              pt: '10px',
             }}
           >
             <Box
@@ -238,8 +244,9 @@ export const SideNav = (props) => {
               {/* Bookmarks section above Dashboard */}
               {showSidebarBookmarks && (
                 <>
-                  <SideNavBookmarks collapse={collapse} />
-                  <Divider sx={{ my: 1 }} />
+                  <SideNavBookmarks collapse={collapse} alignWithRail />
+                  {/* mt matches the rail row's mb: 1, so the dividers meet across the seam */}
+                  <Divider sx={{ mt: 1, mb: 1 }} />
                 </>
               )}
               {/* Render all menu items */}
